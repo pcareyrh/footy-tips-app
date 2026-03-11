@@ -1,0 +1,21 @@
+{
+  "name": "footy-tips-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NRL tipping competition assistant",
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w backend && npm run build -w frontend",
+    "start": "npm start -w backend",
+    "db:migrate": "npm -w backend exec prisma migrate dev",
+    "db:seed": "npm -w backend exec prisma db seed",
+    "db:reset": "npm -w backend exec prisma migrate reset"
+  },
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

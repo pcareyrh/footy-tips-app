@@ -1,0 +1,171 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Team {
+  id        String   @id
+  name      String
+  shortName String
+  logo      String?
+  homeGround String?
+  conference String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  homeFixtures Fixture[] @relation("HomeTeam")
+  awayFixtures Fixture[] @relation("AwayTeam")
+  stats       TeamStat[]
+  injuries    Injury[]
+  ladderEntries LadderEntry[]
+  pickedIn    Pick[]
+}
+
+model Season {
+  id        String   @id
+  year      Int
+  current   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  rounds Round[]
+}
+
+model Round {
+  id        String   @id
+  seasonId  String
+  number    Int
+  name      String?
+  startDate DateTime?
+  endDate   DateTime?
+  isCurrent Boolean  @default(false)
+
+  season   Season    @relation(fields: [seasonId], references: [id])
+  fixtures Fixture[]
+}
+
+model Fixture {
+  id         String    @id @default(cuid())
+  roundId    String
+  homeTeamId String
+  awayTeamId String
+  venue      String?
+  kickoff    DateTime?
+  homeScore  Int?
+  awayScore  Int?
+  result     String?   // "home", "away", "draw", null (not played)
+  referee    String?
+  status     String    @default("upcoming") // upcoming, live, completed
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  round    Round  @relation(fields: [roundId], references: [id])
+  homeTeam Team   @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam Team   @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  picks    Pick[]
+}
+
+model TeamStat {
+  id              String @id @default(cuid())
+  teamId          String
+  roundId         String?
+  season          String
+  played          Int    @default(0)
+  wins            Int    @default(0)
+  losses          Int    @default(0)
+  draws           Int    @default(0)
+  pointsFor       Int    @default(0)
+  pointsAgainst   Int    @default(0)
+  streak          String? // e.g. "W3", "L2"
+  homeWins        Int    @default(0)
+  homeLosses      Int    @default(0)
+  awayWins        Int    @default(0)
+  awayLosses      Int    @default(0)
+  completionRate  Float?
+  tackleEfficiency Float?
+  errorCount      Int?
+  penaltyCount    Int?
+  possessionAvg   Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id])
+
+  @@unique([teamId, season, roundId])
+}
+
+model LadderEntry {
+  id             String @id @default(cuid())
+  teamId         String
+  season         String
+  round          Int
+  position       Int
+  played         Int    @default(0)
+  wins           Int    @default(0)
+  draws          Int    @default(0)
+  losses         Int    @default(0)
+  pointsFor      Int    @default(0)
+  pointsAgainst  Int    @default(0)
+  pointsDiff     Int    @default(0)
+  competitionPoints Int @default(0)
+  createdAt      DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id])
+
+  @@unique([teamId, season, round])
+}
+
+model Injury {
+  id          String   @id @default(cuid())
+  teamId      String
+  playerName  String
+  position    String?
+  injuryType  String?
+  severity    String?  // minor, moderate, major, season-ending
+  returnDate  String?
+  status      String   @default("out") // out, doubtful, probable
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id])
+}
+
+model Pick {
+  id          String   @id @default(cuid())
+  fixtureId   String
+  pickedTeamId String
+  confidence  String   @default("medium") // low, medium, high
+  reasoning   String?
+  factors     String?  // JSON string of factor scores
+  result      String?  // correct, incorrect, null (pending)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  fixture    Fixture @relation(fields: [fixtureId], references: [id])
+  pickedTeam Team    @relation(fields: [pickedTeamId], references: [id])
+}
+
+model PluginConfig {
+  id        String   @id
+  name      String
+  type      String   // data-source, analysis, ui
+  enabled   Boolean  @default(true)
+  config    String?  // JSON config
+  schedule  String?  // cron expression
+  lastRun   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DataSourceLog {
+  id        String   @id @default(cuid())
+  source    String
+  status    String   // success, error
+  message   String?
+  recordsAffected Int @default(0)
+  createdAt DateTime @default(now())
+}
