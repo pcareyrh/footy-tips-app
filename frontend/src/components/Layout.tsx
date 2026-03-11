@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Trophy,
   BarChart3,
+  TrendingUp,
   Settings,
   Activity,
   Menu,
@@ -14,6 +15,7 @@ import { cn } from '../lib/utils';
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/matches', label: 'Matches', icon: Trophy },
+  { to: '/predictions', label: 'Predictions', icon: TrendingUp },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];

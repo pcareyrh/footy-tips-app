@@ -72,6 +72,14 @@ export const api = {
   getScrapeLogs: (limit = 20) => fetchJson<any[]>(`/scrape/logs?limit=${limit}`),
   getScrapeStatus: () => fetchJson<any>('/scrape/status'),
 
+  // Predictions
+  getPredictions: (params?: { season?: string; round?: number }) => {
+    const query = params ? '?' + new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))
+    ).toString() : '';
+    return fetchJson<any>(`/predictions${query}`);
+  },
+
   // Health
   getHealth: () => fetchJson<any>('/health'),
 };

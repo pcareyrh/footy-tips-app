@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Matches from './pages/Matches';
 import MatchDetail from './pages/MatchDetail';
 import Analytics from './pages/Analytics';
+import Predictions from './pages/Predictions';
 import Settings from './pages/Settings';
 
 const queryClient = new QueryClient({
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="/matches" element={<Matches />} />
             <Route path="/matches/:id" element={<MatchDetail />} />
             <Route path="/analytics" element={<Analytics />} />
+            <Route path="/predictions" element={<Predictions />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </Layout>
