@@ -66,6 +66,12 @@ export const api = {
   updatePlugin: (id: string, data: any) =>
     fetchJson<any>(`/plugins/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
+  // Scraping
+  triggerScrape: (data?: { targets?: string[]; season?: string; round?: number }) =>
+    fetchJson<any>('/scrape', { method: 'POST', body: JSON.stringify(data ?? { targets: ['all'] }) }),
+  getScrapeLogs: (limit = 20) => fetchJson<any[]>(`/scrape/logs?limit=${limit}`),
+  getScrapeStatus: () => fetchJson<any>('/scrape/status'),
+
   // Health
   getHealth: () => fetchJson<any>('/health'),
 };
