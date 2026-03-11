@@ -13,6 +13,16 @@ predictionsRoutes.get('/', async (req, res) => {
 
     const predictions = await predictRound(prisma, season, round);
 
+    // Determine the actual round number from the first prediction's fixture
+    let actualRound = round ?? null;
+    if (!actualRound && predictions.length > 0) {
+      const fixture = await prisma.fixture.findUnique({
+        where: { id: predictions[0].fixtureId },
+        include: { round: true },
+      });
+      actualRound = fixture?.round?.number ?? null;
+    }
+
     const summary = predictions.map(p => ({
       match: `${p.homeTeam.name} v ${p.awayTeam.name}`,
       venue: p.venue,
@@ -24,7 +34,7 @@ predictionsRoutes.get('/', async (req, res) => {
 
     res.json({
       season,
-      round: round ?? 'next upcoming',
+      round: actualRound,
       totalMatches: predictions.length,
       summary,
       predictions,

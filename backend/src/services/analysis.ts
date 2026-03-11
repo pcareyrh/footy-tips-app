@@ -160,7 +160,8 @@ export async function predictMatch(
   fixtureId: string,
   homeTeamId: string,
   awayTeamId: string,
-  venue: string
+  venue: string,
+  matchOdds?: { homeOdds: number | null; awayOdds: number | null }
 ): Promise<MatchPrediction> {
   const home = await buildTeamProfile(prisma, homeTeamId);
   const away = await buildTeamProfile(prisma, awayTeamId);
@@ -169,6 +170,23 @@ export async function predictMatch(
   const factors: PredictionFactor[] = [];
   let homeScore = 0;
   let awayScore = 0;
+
+  // Factor 0: Match Odds from bookmakers (weight: 25 max — strongest signal)
+  if (matchOdds?.homeOdds && matchOdds?.awayOdds) {
+    const homeProb = 1 / matchOdds.homeOdds;
+    const awayProb = 1 / matchOdds.awayOdds;
+    const totalProb = homeProb + awayProb;
+    const homeNorm = homeProb / totalProb;
+    const oddsAdv = (homeNorm - 0.5) * 50; // -25 to +25
+    const oddsWeight = Math.abs(oddsAdv);
+    if (oddsAdv > 0) homeScore += oddsWeight; else awayScore += oddsWeight;
+    factors.push({
+      name: 'Match Odds (Bookmaker)',
+      favouring: oddsAdv > 0 ? home.name : oddsAdv < 0 ? away.name : 'Even',
+      weight: oddsWeight,
+      detail: `${home.name} $${matchOdds.homeOdds.toFixed(2)} (${(homeNorm * 100).toFixed(0)}%) vs ${away.name} $${matchOdds.awayOdds.toFixed(2)} (${((1 - homeNorm) * 100).toFixed(0)}%)`,
+    });
+  }
 
   // Factor 1: 2025 Ladder Position (weight: 20 max)
   const ladderDiff = away.ladderPos2025 - home.ladderPos2025;
@@ -300,27 +318,33 @@ export async function predictRound(
   season: string = '2026',
   roundNum?: number
 ): Promise<MatchPrediction[]> {
-  // Find the target round
   let roundId: string;
   if (roundNum) {
     roundId = `${season}-R${roundNum}`;
   } else {
-    // Find the round with upcoming fixtures
-    const upcoming = await prisma.fixture.findFirst({
-      where: { roundId: { startsWith: season }, status: 'upcoming' },
-      orderBy: { roundId: 'asc' },
+    // Find the earliest round with upcoming fixtures by joining to Round table
+    const round = await prisma.round.findFirst({
+      where: {
+        seasonId: season,
+        fixtures: { some: { status: 'upcoming' } },
+      },
+      orderBy: { number: 'asc' },
     });
-    roundId = upcoming?.roundId ?? `${season}-R1`;
+    roundId = round?.id ?? `${season}-R1`;
   }
 
   const fixtures = await prisma.fixture.findMany({
     where: { roundId, status: 'upcoming' },
     include: { homeTeam: true, awayTeam: true },
+    orderBy: { kickoff: 'asc' },
   });
 
   const predictions: MatchPrediction[] = [];
   for (const f of fixtures) {
-    const prediction = await predictMatch(prisma, f.id, f.homeTeamId, f.awayTeamId, f.venue ?? 'TBA');
+    const prediction = await predictMatch(
+      prisma, f.id, f.homeTeamId, f.awayTeamId, f.venue ?? 'TBA',
+      { homeOdds: f.homeOdds, awayOdds: f.awayOdds }
+    );
     predictions.push(prediction);
   }
 
