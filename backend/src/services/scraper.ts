@@ -10,15 +10,35 @@ export type { ScrapeResult };
 export async function scrapeCurrentRound(prisma: PrismaClient, season: number = 2026): Promise<ScrapeResult[]> {
   const results: ScrapeResult[] = [];
 
-  // Find current round
-  const currentRound = await prisma.round.findFirst({
-    where: { seasonId: String(season), isCurrent: true },
-    orderBy: { number: 'desc' },
-  });
-  const roundNum = currentRound?.number ?? 1;
+  // Auto-detect current round from the NRL API (default draw endpoint returns current round)
+  let roundNum = 1;
+  try {
+    const url = `https://www.nrl.com/draw/data?competition=111&season=${season}`;
+    const resp = await fetch(url, {
+      headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
+    });
+    if (resp.ok) {
+      const data = await resp.json() as any;
+      if (typeof data.selectedRoundId === 'number') {
+        roundNum = data.selectedRoundId;
+      }
+    }
+  } catch {
+    // Fall back to DB if API call fails
+    const currentRound = await prisma.round.findFirst({
+      where: { seasonId: String(season), isCurrent: true },
+      orderBy: { number: 'desc' },
+    });
+    roundNum = currentRound?.number ?? 1;
+  }
 
-  // Fetch fixtures for current round
+  // Fetch fixtures for current round (also updates isCurrent flag)
   results.push(await fetchDraw(prisma, season, roundNum));
+
+  // Also scrape the previous round to pick up completed results
+  if (roundNum > 1) {
+    results.push(await fetchDraw(prisma, season, roundNum - 1));
+  }
 
   // Fetch ladder
   results.push(await fetchLadder(prisma, season));
@@ -37,11 +57,13 @@ export async function scrapeLadder(prisma: PrismaClient, season: string = '2026'
  * Alias for backwards compatibility with scrape routes
  */
 export async function scrapeFixtures(prisma: PrismaClient, season: string = '2026', round?: number): Promise<ScrapeResult> {
-  const currentRound = await prisma.round.findFirst({
-    where: { seasonId: season, isCurrent: true },
-    orderBy: { number: 'desc' },
-  });
-  return fetchDraw(prisma, parseInt(season), round ?? currentRound?.number ?? 1);
+  if (round) {
+    return fetchDraw(prisma, parseInt(season), round);
+  }
+  // Auto-detect current round
+  const results = await scrapeCurrentRound(prisma, parseInt(season));
+  // Return just the first draw result (current round fixtures)
+  return results[0] ?? { source: 'nrl.com/api', type: 'draw', recordsAffected: 0, errors: ['No results'], details: '' };
 }
 
 /**

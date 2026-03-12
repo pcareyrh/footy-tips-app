@@ -100,17 +100,29 @@ export async function fetchDraw(
 
     const roundId = `${season}-R${round}`;
 
-    // Ensure round exists
+    // Detect whether this round is the current round from the API
+    const isCurrentRound = data.fixtures.some((f: any) => f.isCurrentRound === true);
+
+    // Ensure round exists and update isCurrent flag
     await prisma.round.upsert({
       where: { id: roundId },
-      update: {},
+      update: { isCurrent: isCurrentRound },
       create: {
         id: roundId,
         seasonId: String(season),
         number: round,
         name: `Round ${round}`,
+        isCurrent: isCurrentRound,
       },
     });
+
+    // If this is the current round, clear isCurrent on all other rounds in the season
+    if (isCurrentRound) {
+      await prisma.round.updateMany({
+        where: { seasonId: String(season), id: { not: roundId } },
+        data: { isCurrent: false },
+      });
+    }
 
     for (const match of data.fixtures) {
       if (match.type !== 'Match') continue;
