@@ -30,7 +30,7 @@ scrapeRoutes.post('/', async (req, res) => {
       historicalProgress = ['Starting historical import...'];
 
       // Run in background, respond immediately
-      scrapeHistorical(prisma, 2024, 2026, (msg) => {
+      scrapeHistorical(prisma, 2025, 2025, (msg) => {
         historicalProgress.push(msg);
         console.log(`[historical] ${msg}`);
       })
@@ -63,7 +63,7 @@ scrapeRoutes.post('/', async (req, res) => {
 
       res.json({
         status: 'started',
-        message: 'Historical import started (2024-2026). Check /api/scrape/status for progress.',
+        message: 'Historical import started (2025). Check /api/scrape/status for progress.',
       });
       return;
     }
