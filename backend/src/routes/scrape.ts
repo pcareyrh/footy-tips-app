@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
-import { scrapeLadder, scrapeFixtures, scrapeAll, scrapeHistorical } from '../services/scraper.js';
+import { scrapeLadder, scrapeFixtures, scrapeAll, scrapeHistorical, scrapeTeamStats } from '../services/scraper.js';
 
 export const scrapeRoutes = Router();
 
@@ -77,6 +77,9 @@ scrapeRoutes.post('/', async (req, res) => {
           break;
         case 'fixtures':
           results.push(await scrapeFixtures(prisma, season, round));
+          break;
+        case 'team-stats':
+          results.push(await scrapeTeamStats(prisma, season));
           break;
         case 'all':
           results.push(...await scrapeAll(prisma, season));

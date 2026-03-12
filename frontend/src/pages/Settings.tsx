@@ -51,6 +51,7 @@ export default function Settings() {
     { value: 'all', label: 'All Sources' },
     { value: 'ladder', label: 'Ladder Only' },
     { value: 'fixtures', label: 'Fixtures Only' },
+    { value: 'team-stats', label: 'Team Stats' },
     { value: 'historical', label: 'Historical (2024-2026)' },
   ];
 

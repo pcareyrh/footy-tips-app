@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { fetchDraw, fetchLadder, fetchSeasonDraw, ScrapeResult } from './nrl-api.js';
+import { fetchDraw, fetchLadder, fetchSeasonDraw, fetchTeamStats, computeTeamStats, ScrapeResult } from './nrl-api.js';
 import { fetchRoundDetails, fetchSeasonRoundDetails } from './rlp-scraper.js';
 
 export type { ScrapeResult };
@@ -45,10 +45,20 @@ export async function scrapeFixtures(prisma: PrismaClient, season: string = '202
 }
 
 /**
- * Scrape all data for current season: current round fixtures + ladder.
+ * Scrape all data for current season: current round fixtures + ladder + team stats.
  */
 export async function scrapeAll(prisma: PrismaClient, season: string = '2026'): Promise<ScrapeResult[]> {
-  return scrapeCurrentRound(prisma, parseInt(season));
+  const results = await scrapeCurrentRound(prisma, parseInt(season));
+  results.push(await scrapeTeamStats(prisma, season));
+  return results;
+}
+
+/**
+ * Scrape team-level statistics from NRL.com stats API.
+ * Falls back to computing stats from completed fixture data if API unavailable.
+ */
+export async function scrapeTeamStats(prisma: PrismaClient, season: string = '2026'): Promise<ScrapeResult> {
+  return fetchTeamStats(prisma, parseInt(season));
 }
 
 /**
@@ -89,6 +99,11 @@ export async function scrapeHistorical(
         results.push(...rlpResults);
       }
     }
+
+    // Compute team stats from fixture data for this season
+    onProgress?.(`Computing ${year} team statistics from fixtures...`);
+    const statsResult = await computeTeamStats(prisma, year);
+    results.push(statsResult);
   }
 
   return results;

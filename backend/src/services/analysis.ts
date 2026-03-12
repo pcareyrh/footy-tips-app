@@ -25,6 +25,11 @@ export interface TeamProfile {
   streak2026: string | null;
   recentForm: string;
   injuries: InjuryInfo[];
+  completionRate: number | null;
+  tackleEfficiency: number | null;
+  errorCount: number | null;
+  penaltyCount: number | null;
+  possessionAvg: number | null;
 }
 
 // Position criticality for injury impact scoring
@@ -213,6 +218,12 @@ async function buildTeamProfile(prisma: PrismaClient, teamId: string): Promise<T
     injuryType: inj.injuryType,
   }));
 
+  // Latest team stats (try 2025 first, then any season)
+  const teamStat = await prisma.teamStat.findFirst({
+    where: { teamId },
+    orderBy: [{ season: 'desc' }, { roundId: 'desc' }],
+  });
+
   return {
     id: teamId,
     name: team.shortName,
@@ -230,6 +241,11 @@ async function buildTeamProfile(prisma: PrismaClient, teamId: string): Promise<T
     streak2026: ladder2026?.streak ?? null,
     recentForm: formStr,
     injuries,
+    completionRate: teamStat?.completionRate ?? null,
+    tackleEfficiency: teamStat?.tackleEfficiency ?? null,
+    errorCount: teamStat?.errorCount ?? null,
+    penaltyCount: teamStat?.penaltyCount ?? null,
+    possessionAvg: teamStat?.possessionAvg ?? null,
   };
 }
 
@@ -418,6 +434,55 @@ export async function predictMatch(
       weight: injuryWeight,
       detail: detailParts.join('. '),
     });
+  }
+
+  // Factor 9: Playing Statistics (weight: 10 max)
+  // Uses completion rate, tackle efficiency, errors, possession when available
+  const hasHomeStats = home.completionRate != null || home.tackleEfficiency != null || home.errorCount != null || home.possessionAvg != null;
+  const hasAwayStats = away.completionRate != null || away.tackleEfficiency != null || away.errorCount != null || away.possessionAvg != null;
+
+  if (hasHomeStats && hasAwayStats) {
+    let statsAdvantage = 0;
+    const statDetails: string[] = [];
+
+    // Completion rate (higher is better) — strong indicator of ball control
+    if (home.completionRate != null && away.completionRate != null) {
+      const compDiff = home.completionRate - away.completionRate;
+      statsAdvantage += compDiff * 0.3; // scaled: 5% difference ≈ 1.5pts
+      statDetails.push(`Completion: ${home.name} ${home.completionRate.toFixed(1)}% vs ${away.name} ${away.completionRate.toFixed(1)}%`);
+    }
+
+    // Tackle efficiency (higher is better)
+    if (home.tackleEfficiency != null && away.tackleEfficiency != null) {
+      const tackleDiff = home.tackleEfficiency - away.tackleEfficiency;
+      statsAdvantage += tackleDiff * 0.2;
+      statDetails.push(`Tackles: ${home.name} ${home.tackleEfficiency.toFixed(1)}% vs ${away.name} ${away.tackleEfficiency.toFixed(1)}%`);
+    }
+
+    // Errors (lower is better — inverted)
+    if (home.errorCount != null && away.errorCount != null) {
+      const errorDiff = away.errorCount - home.errorCount; // opponent errors help you
+      statsAdvantage += errorDiff * 0.15;
+      statDetails.push(`Errors: ${home.name} ${home.errorCount} vs ${away.name} ${away.errorCount}`);
+    }
+
+    // Possession (higher is better)
+    if (home.possessionAvg != null && away.possessionAvg != null) {
+      const possDiff = home.possessionAvg - away.possessionAvg;
+      statsAdvantage += possDiff * 0.2;
+      statDetails.push(`Possession: ${home.name} ${home.possessionAvg.toFixed(1)}% vs ${away.name} ${away.possessionAvg.toFixed(1)}%`);
+    }
+
+    const statsWeight = Math.min(Math.abs(statsAdvantage), 10);
+    if (statsWeight > 0.1) {
+      if (statsAdvantage > 0) homeScore += statsWeight; else awayScore += statsWeight;
+      factors.push({
+        name: 'Playing Statistics',
+        favouring: statsAdvantage > 0 ? home.name : statsAdvantage < 0 ? away.name : 'Even',
+        weight: statsWeight,
+        detail: statDetails.join('. '),
+      });
+    }
   }
 
   // Baseline home advantage

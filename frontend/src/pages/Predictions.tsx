@@ -133,6 +133,40 @@ function PredictionCard({ prediction }: { prediction: any }) {
             </div>
           </div>
 
+          {/* Playing statistics comparison */}
+          {(prediction.homeTeam.completionRate != null || prediction.homeTeam.tackleEfficiency != null || prediction.homeTeam.possessionAvg != null) && (
+            <div className="grid grid-cols-4 gap-2 text-center text-xs">
+              {prediction.homeTeam.completionRate != null && (
+                <div className="rounded-lg bg-zinc-800 p-2">
+                  <p className="text-zinc-500">Completion</p>
+                  <p className="font-mono text-zinc-300">{prediction.homeTeam.completionRate.toFixed(1)}%</p>
+                  <p className="font-mono text-zinc-300">{prediction.awayTeam.completionRate?.toFixed(1) ?? '-'}%</p>
+                </div>
+              )}
+              {prediction.homeTeam.tackleEfficiency != null && (
+                <div className="rounded-lg bg-zinc-800 p-2">
+                  <p className="text-zinc-500">Tackle Eff.</p>
+                  <p className="font-mono text-zinc-300">{prediction.homeTeam.tackleEfficiency.toFixed(1)}%</p>
+                  <p className="font-mono text-zinc-300">{prediction.awayTeam.tackleEfficiency?.toFixed(1) ?? '-'}%</p>
+                </div>
+              )}
+              {prediction.homeTeam.errorCount != null && (
+                <div className="rounded-lg bg-zinc-800 p-2">
+                  <p className="text-zinc-500">Errors</p>
+                  <p className="font-mono text-zinc-300">{prediction.homeTeam.errorCount}</p>
+                  <p className="font-mono text-zinc-300">{prediction.awayTeam.errorCount ?? '-'}</p>
+                </div>
+              )}
+              {prediction.homeTeam.possessionAvg != null && (
+                <div className="rounded-lg bg-zinc-800 p-2">
+                  <p className="text-zinc-500">Possession</p>
+                  <p className="font-mono text-zinc-300">{prediction.homeTeam.possessionAvg.toFixed(1)}%</p>
+                  <p className="font-mono text-zinc-300">{prediction.awayTeam.possessionAvg?.toFixed(1) ?? '-'}%</p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Injury summary */}
           {(prediction.homeTeam.injuries?.length > 0 || prediction.awayTeam.injuries?.length > 0) && (
             <div className="grid grid-cols-2 gap-2 text-xs">
