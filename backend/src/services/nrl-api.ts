@@ -341,97 +341,109 @@ export async function fetchTeamStats(
     details: '',
   };
 
+  // Step 1: Compute base stats (W/L/D, PF/PA, streaks) from fixture data
+  const fixtureResult = await computeTeamStats(prisma, season);
+  result.recordsAffected = fixtureResult.recordsAffected;
+  result.errors.push(...fixtureResult.errors);
+
+  // Step 2: Enrich with NRL.com leaderboard stats (completion%, possession%, etc.)
+  // The API returns stats by category with top-N leaderboard entries per stat,
+  // not a flat team array. We collect per-team values across all categories.
   try {
     const url = `${NRL_BASE}/stats/data?competition=${COMPETITION_ID}&season=${season}`;
     const data = await fetchJson(url);
 
-    // The stats API response format may vary — try common structures
-    const teams: any[] =
-      data.teamStats ?? data.stats ?? data.teams ?? data.positions ??
-      (Array.isArray(data) ? data : null);
-
-    if (!teams || !Array.isArray(teams)) {
-      // Log the available keys so the user can debug
-      const keys = Object.keys(data ?? {}).join(', ');
-      result.errors.push(`Unexpected stats API response structure. Available keys: ${keys}`);
-
-      // Fall back to computing stats from fixture data
-      const fallbackResult = await computeTeamStats(prisma, season);
-      result.recordsAffected = fallbackResult.recordsAffected;
-      result.errors.push(...fallbackResult.errors);
-      result.details = `Fell back to fixture-computed stats. ${fallbackResult.details}`;
+    const categories: any[] = data.teamStats ?? [];
+    if (!Array.isArray(categories) || categories.length === 0) {
+      result.details = `${fixtureResult.details} (no API leaderboard data available)`;
       return result;
     }
 
-    // Determine current round from ladder
+    // Stat IDs we care about → our DB field names
+    const STAT_MAP: Record<number, string> = {
+      1000210: 'completionRate',   // Set Completion %
+      9:       'possessionAvg',    // Possession %
+      37:      'errorCount',       // Errors
+      1000026: 'penaltyCount',     // Penalties Conceded
+    };
+    // Tackle efficiency = Tackles / (Tackles + Missed Tackles)
+    const TACKLE_STAT_ID = 3;
+    const MISSED_TACKLE_STAT_ID = 4;
+
+    // Collect per-team stat values from leaderboards
+    const teamData: Record<string, Record<string, number>> = {};
+    let enriched = 0;
+
+    for (const category of categories) {
+      for (const group of category.groups ?? []) {
+        const statId = group.statId as number;
+        const field = STAT_MAP[statId];
+        const isTackle = statId === TACKLE_STAT_ID;
+        const isMissedTackle = statId === MISSED_TACKLE_STAT_ID;
+
+        if (!field && !isTackle && !isMissedTackle) continue;
+
+        for (const leader of group.leaders ?? []) {
+          const tid =
+            resolveNrlTeamId(leader.teamId ?? 0) ??
+            resolveTeamId(leader.teamNickName ?? '');
+          if (!tid) continue;
+
+          if (!teamData[tid]) teamData[tid] = {};
+          const val = parseFloat(String(leader.value));
+          if (isNaN(val)) continue;
+
+          if (field) teamData[tid][field] = val;
+          if (isTackle) teamData[tid]._tackles = val;
+          if (isMissedTackle) teamData[tid]._missedTackles = val;
+        }
+      }
+    }
+
+    // Determine current round
     const latestLadder = await prisma.ladderEntry.findFirst({
       where: { season: String(season) },
       orderBy: { round: 'desc' },
     });
     const currentRound = latestLadder?.round ?? 1;
+    const roundId = `${season}-R${currentRound}`;
 
-    for (const entry of teams) {
-      // Resolve team ID from various possible fields
-      const teamId =
-        resolveNrlTeamId(entry.teamId ?? entry.team?.teamId ?? 0) ??
-        resolveTeamId(entry.teamNickname ?? entry.teamNickName ?? entry.team?.nickName ?? '');
-
-      if (!teamId) {
-        result.errors.push(`Unknown team in stats: ${JSON.stringify(entry.teamNickname ?? entry.teamId ?? 'unknown').slice(0, 50)}`);
-        continue;
+    // Update existing records with API-sourced stats
+    for (const [teamId, stats] of Object.entries(teamData)) {
+      // Compute tackle efficiency if we have both values
+      if (stats._tackles != null && stats._missedTackles != null) {
+        const total = stats._tackles + stats._missedTackles;
+        if (total > 0) stats.tackleEfficiency = (stats._tackles / total) * 100;
       }
+      delete stats._tackles;
+      delete stats._missedTackles;
 
-      const stats = entry.stats ?? entry;
+      if (Object.keys(stats).length === 0) continue;
 
-      // Extract stats using common NRL.com field name patterns
-      const completionRate = parseStatFloat(stats['completion rate'] ?? stats.completionRate ?? stats.completion);
-      const tackleEfficiency = parseStatFloat(stats['tackle efficiency'] ?? stats.tackleEfficiency ?? stats['tackling efficiency']);
-      const errorCount = parseStatInt(stats.errors ?? stats.errorCount ?? stats['handling errors']);
-      const penaltyCount = parseStatInt(stats.penalties ?? stats.penaltyCount ?? stats['penalties conceded']);
-      const possessionAvg = parseStatFloat(stats.possession ?? stats.possessionAvg ?? stats['avg possession']);
+      // Build update data, converting to correct types
+      const updateData: Record<string, number | null> = {};
+      if (stats.completionRate != null) updateData.completionRate = stats.completionRate;
+      if (stats.possessionAvg != null) updateData.possessionAvg = stats.possessionAvg;
+      if (stats.tackleEfficiency != null) updateData.tackleEfficiency = stats.tackleEfficiency;
+      if (stats.errorCount != null) updateData.errorCount = Math.round(stats.errorCount);
+      if (stats.penaltyCount != null) updateData.penaltyCount = Math.round(stats.penaltyCount);
 
-      const played = parseStatInt(stats.played) ?? 0;
-      const wins = parseStatInt(stats.wins) ?? 0;
-      const losses = parseStatInt(stats.lost ?? stats.losses) ?? 0;
-      const draws = parseStatInt(stats.drawn ?? stats.draws) ?? 0;
-      const pointsFor = parseStatInt(stats['points for'] ?? stats.pointsFor) ?? 0;
-      const pointsAgainst = parseStatInt(stats['points against'] ?? stats.pointsAgainst) ?? 0;
-
-      await prisma.teamStat.upsert({
-        where: {
-          teamId_season_roundId: {
-            teamId,
-            season: String(season),
-            roundId: `${season}-R${currentRound}`,
-          },
-        },
-        update: {
-          played, wins, losses, draws, pointsFor, pointsAgainst,
-          completionRate, tackleEfficiency, errorCount, penaltyCount, possessionAvg,
-        },
-        create: {
-          teamId,
-          season: String(season),
-          roundId: `${season}-R${currentRound}`,
-          played, wins, losses, draws, pointsFor, pointsAgainst,
-          completionRate, tackleEfficiency, errorCount, penaltyCount, possessionAvg,
-        },
-      });
-
-      result.recordsAffected++;
+      try {
+        await prisma.teamStat.update({
+          where: { teamId_season_roundId: { teamId, season: String(season), roundId } },
+          data: updateData,
+        });
+        enriched++;
+      } catch {
+        // Record may not exist if team had no fixtures yet — skip
+      }
     }
 
-    result.details = `${result.recordsAffected} team stats for ${season}`;
+    result.details = `${fixtureResult.details}; enriched ${enriched} teams with NRL.com stats`;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    result.errors.push(`Stats API failed: ${msg}`);
-
-    // Fall back to computing stats from fixture data
-    console.log(`[team-stats] API failed, computing from fixtures: ${msg}`);
-    const fallbackResult = await computeTeamStats(prisma, season);
-    result.recordsAffected = fallbackResult.recordsAffected;
-    result.errors.push(...fallbackResult.errors);
-    result.details = `Fell back to fixture-computed stats. ${fallbackResult.details}`;
+    result.errors.push(`Stats API enrichment failed (fixture stats still saved): ${msg}`);
+    result.details = fixtureResult.details;
   }
 
   return result;
