@@ -84,13 +84,13 @@ export async function scrapeTeamStats(prisma: PrismaClient, season: string = '20
 }
 
 /**
- * Bulk historical import: all fixtures + ladder for 2024-2026.
+ * Bulk historical import: all fixtures + ladder for a given year range.
  * Fetches all rounds from NRL.com API, then enriches with RLP data.
  */
 export async function scrapeHistorical(
   prisma: PrismaClient,
-  startYear: number = 2024,
-  endYear: number = 2026,
+  startYear: number = 2025,
+  endYear: number = 2025,
   onProgress?: (msg: string) => void
 ): Promise<ScrapeResult[]> {
   const results: ScrapeResult[] = [];
