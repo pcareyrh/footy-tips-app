@@ -227,8 +227,10 @@ export async function fetchTippingPage(
   // Pattern: within each game section, home team longteamname appears first (left side),
   // away team longteamname appears second (right side)
   // We'll find all longteamname occurrences and pair them
+  // Use [\s\S]*? (non-greedy) so any HTML content or whitespace between
+  // the opening element and <strong> is accepted, regardless of nesting.
   const teamNamePattern =
-    /id="longteamname"[^>]*>(?:<[^>]*>)*\s*<strong>([^<]+)<\/strong>/g;
+    /id="longteamname"[^>]*>[\s\S]*?<strong[^>]*>([^<]+)<\/strong>/g;
   const teamNames: string[] = [];
   while ((match = teamNamePattern.exec(html)) !== null) {
     teamNames.push(match[1].trim());
@@ -367,7 +369,14 @@ export async function submitTips(
         continue;
       }
 
-      // Find matching prediction
+      // Check for an explicit user override first
+      const override = pickOverrides?.find(
+        (o) =>
+          (o.homeTeamId === game.homeTeamId && o.awayTeamId === game.awayTeamId) ||
+          (o.homeTeamId === game.awayTeamId && o.awayTeamId === game.homeTeamId)
+      );
+
+      // Find matching prediction (used as fallback when no override)
       const prediction = predictions.find(
         (p) =>
           (p.homeTeam.id === game.homeTeamId &&
@@ -376,20 +385,14 @@ export async function submitTips(
             p.awayTeam.id === game.homeTeamId)
       );
 
-      if (!prediction) {
+      if (!override && !prediction) {
         errors.push(
-          `No prediction found for ${game.homeTeam} vs ${game.awayTeam}`
+          `No prediction found for ${game.homeTeam} vs ${game.awayTeam} — run the scraper to populate this fixture`
         );
         continue;
       }
 
-      // Use explicit override if provided, otherwise fall back to predicted winner
-      const override = pickOverrides?.find(
-        (o) =>
-          (o.homeTeamId === game.homeTeamId && o.awayTeamId === game.awayTeamId) ||
-          (o.homeTeamId === game.awayTeamId && o.awayTeamId === game.homeTeamId)
-      );
-      const winnerId = override?.winnerId ?? prediction.predictedWinnerId;
+      const winnerId = override?.winnerId ?? prediction!.predictedWinnerId;
       const pick: 'H' | 'A' = winnerId === game.homeTeamId ? 'H' : 'A';
       tips.set(game.gameNumber, pick);
 
@@ -400,7 +403,7 @@ export async function submitTips(
         pick,
         pickedTeam:
           pick === 'H' ? game.homeTeam : game.awayTeam,
-        confidence: prediction.confidence,
+        confidence: prediction?.confidence ?? 'MANUAL',
       });
     }
 
