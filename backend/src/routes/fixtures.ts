@@ -6,12 +6,14 @@ export const fixtureRoutes = Router();
 // GET / - List fixtures with optional filters
 fixtureRoutes.get('/', async (req, res) => {
   try {
-    const { roundId, season, status } = req.query;
+    const { roundId, season, status, current } = req.query;
 
     const where: Record<string, unknown> = {};
     if (roundId) where.roundId = roundId as string;
     if (status) where.status = status as string;
-    if (season) {
+    if (current === 'true') {
+      where.round = { isCurrent: true };
+    } else if (season) {
       where.round = { season: { year: parseInt(season as string, 10) } };
     }
 

@@ -10,8 +10,8 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   const { data: fixtures = [] } = useQuery({
-    queryKey: ['fixtures', 'upcoming'],
-    queryFn: () => api.getFixtures({ status: 'upcoming' }),
+    queryKey: ['fixtures', 'current-round'],
+    queryFn: () => api.getFixtures({ current: 'true' }),
   });
 
   const { data: summary } = useQuery({
@@ -24,8 +24,9 @@ export default function Dashboard() {
     queryFn: () => api.getLadder(),
   });
 
-  const upcoming = fixtures.filter((f: any) => f.status !== 'completed').slice(0, 6);
-  const currentRound = upcoming.length > 0 ? upcoming[0].round?.number : '—';
+  const currentRound = fixtures.length > 0 ? fixtures[0].round?.number : '—';
+  const upcoming = fixtures.filter((f: any) => f.status !== 'completed');
+  const completed = fixtures.filter((f: any) => f.status === 'completed');
 
   return (
     <div className="space-y-6">
@@ -33,58 +34,107 @@ export default function Dashboard() {
       <div className="rounded-xl bg-gradient-to-br from-emerald-600/20 via-zinc-900 to-zinc-900 border border-emerald-500/20 p-6 lg:p-8">
         <h1 className="text-2xl font-bold lg:text-3xl">Round {currentRound}</h1>
         <p className="mt-1 text-zinc-400">
-          {upcoming.length > 0
-            ? `${upcoming.length} upcoming match${upcoming.length !== 1 ? 'es' : ''}`
-            : 'No upcoming matches'}
+          {fixtures.length === 0
+            ? 'No data — run the scraper'
+            : upcoming.length > 0
+            ? `${completed.length} result${completed.length !== 1 ? 's' : ''} · ${upcoming.length} to play`
+            : `All ${completed.length} matches complete`}
         </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Match cards */}
         <div className="space-y-4 lg:col-span-2">
-          <h2 className="text-lg font-semibold">Upcoming Matches</h2>
-          {upcoming.length === 0 && (
+          {fixtures.length === 0 && (
             <Card>
-              <p className="text-center text-zinc-500 py-8">No upcoming matches found.</p>
+              <p className="text-center text-zinc-500 py-8">No fixtures found. Run the scraper to populate data.</p>
             </Card>
           )}
-          <div className="grid gap-3 sm:grid-cols-2">
-            {upcoming.map((fixture: any) => (
-              <button
-                key={fixture.id}
-                onClick={() => navigate(`/matches/${fixture.id}`)}
-                className="text-left rounded-xl border border-zinc-800 bg-zinc-800/50 p-4 transition-all hover:border-emerald-500/40 hover:bg-zinc-800 hover:shadow-lg hover:shadow-emerald-500/5"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <TeamLogo shortName={fixture.homeTeam?.shortName || 'HOM'} size="sm" />
-                    <span className="truncate font-medium text-sm">
-                      {fixture.homeTeam?.name || 'Home'}
-                    </span>
-                  </div>
-                  <span className="text-xs font-bold text-zinc-500">VS</span>
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="truncate font-medium text-sm text-right">
-                      {fixture.awayTeam?.name || 'Away'}
-                    </span>
-                    <TeamLogo shortName={fixture.awayTeam?.shortName || 'AWY'} size="sm" />
-                  </div>
-                </div>
-                <div className="mt-3 flex items-center gap-3 text-xs text-zinc-500">
-                  <span className="flex items-center gap-1">
-                    <MapPin size={12} />
-                    {fixture.venue || 'TBA'}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <CalendarDays size={12} />
-                    {fixture.kickoff
-                      ? format(new Date(fixture.kickoff), 'EEE d MMM, h:mm a')
-                      : 'TBA'}
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
+
+          {upcoming.length > 0 && (
+            <>
+              <h2 className="text-lg font-semibold">Upcoming</h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {upcoming.map((fixture: any) => (
+                  <button
+                    key={fixture.id}
+                    onClick={() => navigate(`/matches/${fixture.id}`)}
+                    className="text-left rounded-xl border border-zinc-800 bg-zinc-800/50 p-4 transition-all hover:border-emerald-500/40 hover:bg-zinc-800 hover:shadow-lg hover:shadow-emerald-500/5"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <TeamLogo shortName={fixture.homeTeam?.shortName || 'HOM'} size="sm" />
+                        <span className="truncate font-medium text-sm">
+                          {fixture.homeTeam?.name || 'Home'}
+                        </span>
+                      </div>
+                      <span className="text-xs font-bold text-zinc-500">VS</span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="truncate font-medium text-sm text-right">
+                          {fixture.awayTeam?.name || 'Away'}
+                        </span>
+                        <TeamLogo shortName={fixture.awayTeam?.shortName || 'AWY'} size="sm" />
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center gap-3 text-xs text-zinc-500">
+                      <span className="flex items-center gap-1">
+                        <MapPin size={12} />
+                        {fixture.venue || 'TBA'}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <CalendarDays size={12} />
+                        {fixture.kickoff
+                          ? format(new Date(fixture.kickoff), 'EEE d MMM, h:mm a')
+                          : 'TBA'}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {completed.length > 0 && (
+            <>
+              <h2 className="text-lg font-semibold">Results</h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {completed.map((fixture: any) => {
+                  const homeWon = fixture.result === 'home';
+                  const awayWon = fixture.result === 'away';
+                  return (
+                    <button
+                      key={fixture.id}
+                      onClick={() => navigate(`/matches/${fixture.id}`)}
+                      className="text-left rounded-xl border border-zinc-700 bg-zinc-800/30 p-4 transition-all hover:border-zinc-600 hover:bg-zinc-800"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <TeamLogo shortName={fixture.homeTeam?.shortName || 'HOM'} size="sm" />
+                          <span className={`truncate text-sm font-medium ${homeWon ? 'text-white' : 'text-zinc-400'}`}>
+                            {fixture.homeTeam?.name || 'Home'}
+                          </span>
+                        </div>
+                        <div className="shrink-0 text-center">
+                          <span className="text-base font-bold tabular-nums">
+                            {fixture.homeScore ?? '—'} – {fixture.awayScore ?? '—'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 min-w-0 justify-end">
+                          <span className={`truncate text-sm font-medium text-right ${awayWon ? 'text-white' : 'text-zinc-400'}`}>
+                            {fixture.awayTeam?.name || 'Away'}
+                          </span>
+                          <TeamLogo shortName={fixture.awayTeam?.shortName || 'AWY'} size="sm" />
+                        </div>
+                      </div>
+                      <div className="mt-2 text-xs text-zinc-500">
+                        {fixture.venue || 'TBA'}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Sidebar */}
