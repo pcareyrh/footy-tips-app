@@ -24,7 +24,7 @@ export default function Dashboard() {
     queryFn: () => api.getLadder(),
   });
 
-  const currentRound = fixtures.length > 0 ? fixtures[0].roundNumber : '—';
+  const currentRound = fixtures.length > 0 ? fixtures[0].round?.number : '—';
   const upcoming = fixtures.filter((f: any) => f.status !== 'completed').slice(0, 6);
 
   return (
@@ -77,8 +77,8 @@ export default function Dashboard() {
                   </span>
                   <span className="flex items-center gap-1">
                     <CalendarDays size={12} />
-                    {fixture.startTime
-                      ? format(new Date(fixture.startTime), 'EEE d MMM, h:mm a')
+                    {fixture.kickoff
+                      ? format(new Date(fixture.kickoff), 'EEE d MMM, h:mm a')
                       : 'TBA'}
                   </span>
                 </div>

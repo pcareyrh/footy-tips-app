@@ -231,10 +231,15 @@ function PredictionCard({ prediction }: { prediction: any }) {
 }
 
 export default function Predictions() {
+  const [selectedRound, setSelectedRound] = useState<number | undefined>(undefined);
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['predictions'],
-    queryFn: () => api.getPredictions(),
+    queryKey: ['predictions', selectedRound],
+    queryFn: () => api.getPredictions({ round: selectedRound }),
   });
+
+  // Once we know the current round from the API, lock it in so the dropdown shows it
+  const effectiveRound = selectedRound ?? data?.round ?? undefined;
 
   return (
     <div className="space-y-6">
@@ -243,7 +248,17 @@ export default function Predictions() {
           <h1 className="text-2xl font-bold">Round Predictions</h1>
           <p className="text-sm text-zinc-500">AI-powered match predictions based on historical data</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <select
+            value={effectiveRound ?? ''}
+            onChange={e => setSelectedRound(e.target.value ? Number(e.target.value) : undefined)}
+            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 focus:border-emerald-500/50 focus:outline-none"
+          >
+            <option value="">Current Round</option>
+            {Array.from({ length: 27 }, (_, i) => i + 1).map(r => (
+              <option key={r} value={r}>Round {r}</option>
+            ))}
+          </select>
           <TrendingUp size={20} className="text-emerald-500" />
           {data && (
             <span className="text-sm text-zinc-400">{data.totalMatches} matches</span>
