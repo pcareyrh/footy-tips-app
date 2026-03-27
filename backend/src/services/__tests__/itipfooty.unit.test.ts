@@ -317,7 +317,8 @@ describe('submitTipsToSite()', () => {
 // ---------------------------------------------------------------------------
 describe('submitTips()', () => {
   const mockPrisma = {
-    fixture: { findUnique: vi.fn() },
+    fixture: { findUnique: vi.fn(), findFirst: vi.fn().mockResolvedValue(null) },
+    pick: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({}), update: vi.fn().mockResolvedValue({}) },
     dataSourceLog: { create: vi.fn().mockResolvedValue({}) },
     round: { findFirst: vi.fn() },
   } as unknown as PrismaClient;

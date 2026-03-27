@@ -63,14 +63,14 @@ describe('GET /api/analytics/summary', () => {
 });
 
 describe('GET /api/analytics/by-factor', () => {
-  it('returns array of 3 confidence levels', async () => {
+  it('returns only confidence levels that have picks', async () => {
     const res = await request(app).get('/api/analytics/by-factor');
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(3);
+    // Seeded picks use 'high' and 'low' only — 'medium' has no data and is omitted
     const levels = res.body.map((r: { confidence: string }) => r.confidence);
     expect(levels).toContain('low');
-    expect(levels).toContain('medium');
     expect(levels).toContain('high');
+    expect(levels).not.toContain('medium');
   });
 
   it('100% accuracy for confidence level with all correct picks', async () => {
