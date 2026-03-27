@@ -10,8 +10,8 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   const { data: fixtures = [] } = useQuery({
-    queryKey: ['fixtures'],
-    queryFn: () => api.getFixtures(),
+    queryKey: ['fixtures', 'upcoming'],
+    queryFn: () => api.getFixtures({ status: 'upcoming' }),
   });
 
   const { data: summary } = useQuery({
@@ -24,8 +24,8 @@ export default function Dashboard() {
     queryFn: () => api.getLadder(),
   });
 
-  const currentRound = fixtures.length > 0 ? fixtures[0].round?.number : '—';
   const upcoming = fixtures.filter((f: any) => f.status !== 'completed').slice(0, 6);
+  const currentRound = upcoming.length > 0 ? upcoming[0].round?.number : '—';
 
   return (
     <div className="space-y-6">
@@ -98,7 +98,7 @@ export default function Dashboard() {
                 </span>
                 <span className="font-semibold">
                   {summary?.accuracy != null
-                    ? `${(summary.accuracy * 100).toFixed(1)}%`
+                    ? `${summary.accuracy.toFixed(1)}%`
                     : '—'}
                 </span>
               </div>
@@ -112,7 +112,7 @@ export default function Dashboard() {
                 <span className="flex items-center gap-2 text-sm text-zinc-400">
                   <Flame size={16} className="text-emerald-500" /> Streak
                 </span>
-                <span className="font-semibold">{summary?.currentStreak ?? '—'}</span>
+                <span className="font-semibold">{summary?.streak ?? '—'}</span>
               </div>
             </div>
           </Card>
@@ -138,7 +138,7 @@ export default function Dashboard() {
                       <td className="py-1.5 font-medium">{row.team?.shortName || row.teamName || '—'}</td>
                       <td className="py-1.5 text-right text-zinc-400">{row.wins ?? '—'}</td>
                       <td className="py-1.5 text-right font-medium text-emerald-400">
-                        {row.points ?? '—'}
+                        {row.competitionPoints ?? '—'}
                       </td>
                     </tr>
                   ))}
