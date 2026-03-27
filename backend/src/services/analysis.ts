@@ -83,29 +83,29 @@ export interface MatchPrediction {
   summary: string;
 }
 
-function parseTitleOdds(odds: string | null): number | null {
+export function parseTitleOdds(odds: string | null): number | null {
   if (!odds) return null;
   return parseFloat(odds.replace('$', ''));
 }
 
-function formWinRate(form: string, n: number = 5): number {
+export function formWinRate(form: string, n: number = 5): number {
   const recent = form.slice(0, n);
   if (recent.length === 0) return 0.5;
   const wins = (recent.match(/W/g) || []).length;
   return wins / recent.length;
 }
 
-function winPct(wins: number, losses: number): number {
+export function winPct(wins: number, losses: number): number {
   const total = wins + losses;
   return total > 0 ? wins / total : 0.5;
 }
 
-function impliedProb(odds: number | null): number {
+export function impliedProb(odds: number | null): number {
   if (!odds || odds <= 1) return 0.5;
   return 1 / odds;
 }
 
-function confidenceLabel(score: number): 'LOW' | 'MEDIUM' | 'HIGH' | 'VERY HIGH' {
+export function confidenceLabel(score: number): 'LOW' | 'MEDIUM' | 'HIGH' | 'VERY HIGH' {
   if (score >= 80) return 'VERY HIGH';
   if (score >= 65) return 'HIGH';
   if (score >= 50) return 'MEDIUM';
@@ -130,7 +130,7 @@ function getStatusModifier(status: string): number {
  * Calculate the total injury burden for a team.
  * Higher score = more impacted by injuries (worse off).
  */
-function calculateInjuryBurden(injuries: InjuryInfo[]): number {
+export function calculateInjuryBurden(injuries: InjuryInfo[]): number {
   let burden = 0;
   for (const inj of injuries) {
     if (inj.status === 'probable') continue; // returning players don't add burden
@@ -146,7 +146,7 @@ function calculateInjuryBurden(injuries: InjuryInfo[]): number {
  * Calculate a positive boost from players returning from injury (status: probable).
  * Returns a score representing the team's gain from returning players.
  */
-function calculateReturnBoost(injuries: InjuryInfo[]): number {
+export function calculateReturnBoost(injuries: InjuryInfo[]): number {
   let boost = 0;
   for (const inj of injuries) {
     if (inj.status !== 'probable') continue;

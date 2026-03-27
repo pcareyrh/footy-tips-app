@@ -92,7 +92,7 @@ function getCredentials() {
 /**
  * Login to iTipFooty and return the session cookie string.
  */
-async function login(): Promise<string> {
+export async function login(): Promise<string> {
   const { username, password } = getCredentials();
 
   const body = new URLSearchParams({
@@ -132,7 +132,7 @@ async function login(): Promise<string> {
 /**
  * Fetch the tipping page and parse the form structure.
  */
-async function fetchTippingPage(
+export async function fetchTippingPage(
   sessionCookie: string,
   round: number
 ): Promise<ITipFormData> {
@@ -252,7 +252,7 @@ async function fetchTippingPage(
 /**
  * Submit tips to iTipFooty.
  */
-async function submitTipsToSite(
+export async function submitTipsToSite(
   sessionCookie: string,
   formData: ITipFormData,
   tips: Map<number, 'H' | 'A'>
