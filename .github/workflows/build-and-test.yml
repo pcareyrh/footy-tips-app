@@ -54,4 +54,4 @@ jobs:
       - name: Run E2E tests
         run: npm run test:e2e
         env:
-          DATABASE_URL: file:./backend/prisma/e2e-test.db
+          DATABASE_URL: file:${{ github.workspace }}/backend/prisma/e2e-test.db
