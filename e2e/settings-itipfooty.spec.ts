@@ -47,6 +47,32 @@ test.describe('Settings — iTipFooty section', () => {
         });
       });
 
+      await page.route('**/api/predictions**', (route) => {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            season: '2026',
+            round: 1,
+            totalMatches: 1,
+            summary: [],
+            predictions: [{
+              fixtureId: 'fix-1',
+              homeTeam: { id: 'MEL', name: 'Storm', ladderPos2025: 1, wins2025: 20, losses2025: 5, recentForm: 'WWWWL', titleOdds: null, injuries: [], completionRate: null, tackleEfficiency: null, errorCount: null, penaltyCount: null, possessionAvg: null },
+              awayTeam: { id: 'PEN', name: 'Panthers', ladderPos2025: 3, wins2025: 17, losses2025: 8, recentForm: 'WLWWL', titleOdds: null, injuries: [], completionRate: null, tackleEfficiency: null, errorCount: null, penaltyCount: null, possessionAvg: null },
+              venue: 'AAMI Park',
+              h2h: '3-2 in 5 games',
+              predictedWinner: 'Storm',
+              predictedWinnerId: 'MEL',
+              confidence: 'HIGH',
+              confidenceScore: 70,
+              factors: [],
+              summary: 'Storm predicted to win.',
+            }],
+          }),
+        });
+      });
+
       await page.route('**/api/itipfooty/submit', (route) => {
         route.fulfill({
           status: 200,
@@ -63,10 +89,15 @@ test.describe('Settings — iTipFooty section', () => {
 
       await page.goto('/settings');
 
-      // Click submit button
-      const submitBtn = page.getByRole('button', { name: /submit tips/i });
-      await expect(submitBtn).toBeVisible({ timeout: 10000 });
-      await submitBtn.click();
+      // Open the review panel
+      const reviewBtn = page.getByRole('button', { name: /review.*submit tips/i });
+      await expect(reviewBtn).toBeVisible({ timeout: 10000 });
+      await reviewBtn.click();
+
+      // Wait for predictions to load and confirm button to appear
+      const confirmBtn = page.getByRole('button', { name: /confirm.*submit/i });
+      await expect(confirmBtn).toBeVisible({ timeout: 10000 });
+      await confirmBtn.click();
 
       // Success message should appear
       await expect(page.getByText(/submitted/i)).toBeVisible({ timeout: 10000 });
