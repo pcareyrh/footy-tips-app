@@ -333,9 +333,21 @@ describe('submitTips()', () => {
 
   it('returns success:false when predictRound returns empty array', async () => {
     vi.mocked(predictRound).mockResolvedValueOnce([]);
+
+    (fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        status: 302,
+        headers: { getSetCookie: () => ['PHPSESSID=sess1; Path=/'] },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => MOCK_TIPPING_HTML,
+      });
+
     const result = await submitTips(mockPrisma, 1);
     expect(result.success).toBe(false);
-    expect(result.message).toContain('No predictions');
+    // With no predictions and no overrides, all games are unmatched
+    expect(result.message).toContain('No tips to submit');
   });
 
   it('picks H when predictedWinnerId matches homeTeamId', async () => {
