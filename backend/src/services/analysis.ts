@@ -69,6 +69,13 @@ export interface PredictionFactor {
   detail: string;
 }
 
+export interface ActualResult {
+  homeScore: number;
+  awayScore: number;
+  winner: 'home' | 'away' | 'draw';
+  correct: boolean | null; // null for draws
+}
+
 export interface MatchPrediction {
   fixtureId: string;
   homeTeam: TeamProfile;
@@ -81,6 +88,7 @@ export interface MatchPrediction {
   confidenceScore: number;
   factors: PredictionFactor[];
   summary: string;
+  actualResult?: ActualResult;
 }
 
 export function parseTitleOdds(odds: string | null): number | null {
@@ -537,19 +545,25 @@ export async function predictRound(
   if (roundNum) {
     roundId = `${season}-R${roundNum}`;
   } else {
-    // Find the earliest round with upcoming fixtures by joining to Round table
-    const round = await prisma.round.findFirst({
-      where: {
-        seasonId: season,
-        fixtures: { some: { status: 'upcoming' } },
-      },
-      orderBy: { number: 'asc' },
+    // Prefer the round flagged isCurrent, fall back to earliest with upcoming fixtures
+    const currentRound = await prisma.round.findFirst({
+      where: { seasonId: season, isCurrent: true },
     });
-    roundId = round?.id ?? `${season}-R1`;
+    if (currentRound) {
+      roundId = currentRound.id;
+    } else {
+      const upcomingRound = await prisma.round.findFirst({
+        where: { seasonId: season, fixtures: { some: { status: 'upcoming' } } },
+        orderBy: { number: 'asc' },
+      });
+      roundId = upcomingRound?.id ?? `${season}-R1`;
+    }
   }
 
+  // Fetch all fixtures for the round (upcoming and completed) so predictions
+  // work for any round, not just the current one.
   const fixtures = await prisma.fixture.findMany({
-    where: { roundId, status: 'upcoming' },
+    where: { roundId },
     include: { homeTeam: true, awayTeam: true },
     orderBy: { kickoff: 'asc' },
   });
@@ -560,6 +574,21 @@ export async function predictRound(
       prisma, f.id, f.homeTeamId, f.awayTeamId, f.venue ?? 'TBA',
       { homeOdds: f.homeOdds, awayOdds: f.awayOdds }
     );
+
+    // For completed fixtures, attach the actual result and whether the prediction was correct
+    if (f.status === 'completed' && f.result) {
+      const winner = f.result as 'home' | 'away' | 'draw';
+      let correct: boolean | null = null;
+      if (winner === 'home') correct = prediction.predictedWinnerId === f.homeTeamId;
+      else if (winner === 'away') correct = prediction.predictedWinnerId === f.awayTeamId;
+      prediction.actualResult = {
+        homeScore: f.homeScore ?? 0,
+        awayScore: f.awayScore ?? 0,
+        winner,
+        correct,
+      };
+    }
+
     predictions.push(prediction);
   }
 

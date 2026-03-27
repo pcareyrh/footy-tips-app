@@ -3,7 +3,7 @@ import { TrendingUp, Target, ChevronDown, ChevronUp, Home } from 'lucide-react';
 import { api } from '../services/api';
 import Card from '../components/Card';
 import { cn } from '../lib/utils';
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 const confidenceColors: Record<string, { bg: string; text: string; border: string }> = {
   'VERY HIGH': { bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/40' },
@@ -81,6 +81,32 @@ function PredictionCard({ prediction }: { prediction: any }) {
           </div>
         </div>
       </div>
+
+      {/* Actual result banner (completed matches only) */}
+      {prediction.actualResult && (
+        <div className={cn(
+          'mx-4 mb-2 flex items-center justify-between rounded-lg border px-3 py-2 text-sm',
+          prediction.actualResult.correct === true
+            ? 'border-emerald-500/30 bg-emerald-500/10'
+            : prediction.actualResult.correct === false
+            ? 'border-red-500/30 bg-red-500/10'
+            : 'border-zinc-600 bg-zinc-800/50'
+        )}>
+          <span className="font-mono font-bold text-white">
+            {prediction.homeTeam.name} {prediction.actualResult.homeScore} – {prediction.actualResult.awayScore} {prediction.awayTeam.name}
+          </span>
+          <span className={cn(
+            'ml-3 shrink-0 text-xs font-bold uppercase tracking-wide',
+            prediction.actualResult.correct === true ? 'text-emerald-400'
+            : prediction.actualResult.correct === false ? 'text-red-400'
+            : 'text-zinc-400'
+          )}>
+            {prediction.actualResult.correct === true ? '✓ Correct'
+             : prediction.actualResult.correct === false ? '✗ Wrong'
+             : 'Draw'}
+          </span>
+        </div>
+      )}
 
       {/* Team comparison bar */}
       <div className="px-4 pb-2">
@@ -231,15 +257,39 @@ function PredictionCard({ prediction }: { prediction: any }) {
 }
 
 export default function Predictions() {
+  const currentYear = new Date().getFullYear().toString();
   const [selectedRound, setSelectedRound] = useState<number | undefined>(undefined);
+
+  // Fetch all season fixtures to drive the round dropdown (same source of truth as Matches page)
+  const { data: allFixtures = [] } = useQuery({
+    queryKey: ['fixtures', currentYear],
+    queryFn: () => api.getFixtures({ season: currentYear }),
+  });
+
+  const rounds = useMemo(() =>
+    [...new Set(allFixtures.map((f: any) => f.round?.number as number))]
+      .filter((n) => n != null)
+      .sort((a, b) => a - b),
+    [allFixtures]
+  );
+
+  const currentRound = useMemo(() => {
+    const f = allFixtures.find((f: any) => f.round?.isCurrent);
+    return f?.round?.number as number | undefined;
+  }, [allFixtures]);
+
+  // One-time: lock in the current round once fixtures load
+  useEffect(() => {
+    if (currentRound !== undefined && selectedRound === undefined) {
+      setSelectedRound(currentRound);
+    }
+  }, [currentRound]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['predictions', selectedRound],
     queryFn: () => api.getPredictions({ round: selectedRound }),
+    enabled: selectedRound !== undefined,
   });
-
-  // Once we know the current round from the API, lock it in so the dropdown shows it
-  const effectiveRound = selectedRound ?? data?.round ?? undefined;
 
   return (
     <div className="space-y-6">
@@ -250,14 +300,19 @@ export default function Predictions() {
         </div>
         <div className="flex items-center gap-3">
           <select
-            value={effectiveRound ?? ''}
+            value={selectedRound ?? ''}
             onChange={e => setSelectedRound(e.target.value ? Number(e.target.value) : undefined)}
             className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 focus:border-emerald-500/50 focus:outline-none"
+            disabled={rounds.length === 0}
           >
-            <option value="">Current Round</option>
-            {Array.from({ length: 27 }, (_, i) => i + 1).map(r => (
-              <option key={r} value={r}>Round {r}</option>
-            ))}
+            {rounds.length === 0
+              ? <option value="">Loading...</option>
+              : rounds.map(r => (
+                  <option key={r} value={r}>
+                    Round {r}{r === currentRound ? ' (current)' : ''}
+                  </option>
+                ))
+            }
           </select>
           <TrendingUp size={20} className="text-emerald-500" />
           {data && (

@@ -32,13 +32,8 @@ export async function scrapeCurrentRound(prisma: PrismaClient, season: number = 
     roundNum = currentRound?.number ?? 1;
   }
 
-  // Fetch fixtures for current round (also updates isCurrent flag)
+  // Fetch fixtures for current round only (also updates isCurrent flag)
   results.push(await fetchDraw(prisma, season, roundNum));
-
-  // Also scrape the previous round to pick up completed results
-  if (roundNum > 1) {
-    results.push(await fetchDraw(prisma, season, roundNum - 1));
-  }
 
   // Fetch ladder
   results.push(await fetchLadder(prisma, season));
