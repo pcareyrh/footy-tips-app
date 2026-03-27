@@ -46,7 +46,7 @@ jobs:
       - name: Seed database for E2E
         run: cd backend && npx prisma db push && npx prisma db seed
         env:
-          DATABASE_URL: file:./prisma/e2e-test.db
+          DATABASE_URL: file:${{ github.workspace }}/backend/prisma/e2e-test.db
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -54,4 +54,4 @@ jobs:
       - name: Run E2E tests
         run: npm run test:e2e
         env:
-          DATABASE_URL: file:./backend/prisma/e2e-test.db
+          DATABASE_URL: file:${{ github.workspace }}/backend/prisma/e2e-test.db
