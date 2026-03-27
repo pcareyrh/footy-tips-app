@@ -1,0 +1,10 @@
+.git
+.github
+node_modules
+*/node_modules
+backend/dist
+frontend/dist
+backend/prisma/*.db
+e2e
+*.md
+.env*
