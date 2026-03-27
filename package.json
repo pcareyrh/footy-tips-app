@@ -9,13 +9,16 @@
     "start": "npm start -w backend",
     "db:migrate": "npm -w backend exec prisma migrate dev",
     "db:seed": "npm -w backend exec prisma db seed",
-    "db:reset": "npm -w backend exec prisma migrate reset"
+    "db:reset": "npm -w backend exec prisma migrate reset",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "workspaces": [
     "backend",
     "frontend"
   ],
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "concurrently": "^9.1.0"
   }
 }

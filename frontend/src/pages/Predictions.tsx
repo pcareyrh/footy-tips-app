@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { TrendingUp, Target, ChevronDown, ChevronUp, Trophy, Home, BarChart3 } from 'lucide-react';
+import { TrendingUp, Target, ChevronDown, ChevronUp, Home } from 'lucide-react';
 import { api } from '../services/api';
 import Card from '../components/Card';
-import Badge from '../components/Badge';
 import { cn } from '../lib/utils';
 import { useState } from 'react';
 
