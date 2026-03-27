@@ -107,4 +107,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(round !== undefined ? { round } : {}),
     }),
+
+  // App settings
+  getSettings: () => fetchJson<{ settings: Record<string, string>; scrapeScheduleOptions: Array<{ value: string; label: string }> }>('/settings'),
+  updateSetting: (key: string, value: string) =>
+    fetchJson<any>(`/settings/${key}`, { method: 'PUT', body: JSON.stringify({ value }) }),
 };

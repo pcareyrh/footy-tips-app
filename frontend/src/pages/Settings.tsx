@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plug, RefreshCw, Info, Download, Clock, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Plug, RefreshCw, Info, Download, Clock, CheckCircle, AlertCircle, Loader2, Timer } from 'lucide-react';
 import { api } from '../services/api';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
@@ -43,6 +43,20 @@ export default function Settings() {
     queryFn: () => api.getScrapeLogs(10),
   });
 
+  const { data: settingsData } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api.getSettings(),
+  });
+
+  const updateSetting = useMutation({
+    mutationFn: ({ key, value }: { key: string; value: string }) =>
+      api.updateSetting(key, value),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
+  });
+
+  const scrapeSchedule = settingsData?.settings?.scrape_schedule ?? 'off';
+  const scheduleOptions = settingsData?.scrapeScheduleOptions ?? [];
+
   const togglePlugin = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
       api.updatePlugin(id, { enabled }),
@@ -71,6 +85,39 @@ export default function Settings() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Settings</h1>
+
+      {/* Auto-Scrape Schedule */}
+      <Card title="Auto-Scrape Schedule" subtitle="Automatically fetch fresh data from NRL.com">
+        <div className="space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-zinc-300">Frequency</label>
+            <div className="flex flex-wrap gap-2">
+              {scheduleOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => updateSetting.mutate({ key: 'scrape_schedule', value: opt.value })}
+                  disabled={updateSetting.isPending}
+                  className={cn(
+                    'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+                    scrapeSchedule === opt.value
+                      ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/50'
+                      : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {scrapeSchedule !== 'off' && (
+            <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-400">
+              <Timer size={14} />
+              <span>Scraper will run automatically — <span className="font-medium">{scheduleOptions.find(o => o.value === scrapeSchedule)?.label}</span></span>
+            </div>
+          )}
+        </div>
+      </Card>
 
       {/* Scrape Controls */}
       <Card title="Data Scraper" subtitle="Fetch latest data from NRL.com on demand">

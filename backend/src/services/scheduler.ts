@@ -17,11 +17,24 @@
 import * as cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 import { submitTips, isConfigured, PickOverride } from './itipfooty.js';
-import { scrapeCurrentRound } from './scraper.js';
+import { scrapeCurrentRound, scrapeAll } from './scraper.js';
 
 let task: cron.ScheduledTask | null = null;
+let scrapeTask: cron.ScheduledTask | null = null;
+let _prisma: PrismaClient | null = null;
+
+export const SCRAPE_SCHEDULE_KEY = 'scrape_schedule';
+
+export const SCRAPE_SCHEDULE_OPTIONS: Record<string, { label: string; cron: string | null }> = {
+  off:      { label: 'Off (manual only)',  cron: null },
+  '1h':     { label: 'Every hour',         cron: '0 * * * *' },
+  '6h':     { label: 'Every 6 hours',      cron: '0 */6 * * *' },
+  '12h':    { label: 'Every 12 hours',     cron: '0 */12 * * *' },
+  daily:    { label: 'Daily at midnight',  cron: '0 0 * * *' },
+};
 
 export function startScheduler(prisma: PrismaClient): void {
+  _prisma = prisma;
   if (task) return;
 
   task = cron.schedule('* * * * *', () => {
@@ -32,11 +45,40 @@ export function startScheduler(prisma: PrismaClient): void {
 
   const status = isConfigured() ? 'active — will auto-submit tips' : 'iTipFooty not configured, submissions disabled';
   console.log(`[scheduler] Started (${status})`);
+
+  // Load persisted scrape schedule from DB
+  prisma.appSetting.findUnique({ where: { key: SCRAPE_SCHEDULE_KEY } }).then((row) => {
+    if (row?.value && row.value !== 'off') {
+      updateScrapeSchedule(row.value);
+    }
+  }).catch(() => {});
 }
 
 export function stopScheduler(): void {
   task?.stop();
   task = null;
+  scrapeTask?.stop();
+  scrapeTask = null;
+}
+
+export function updateScrapeSchedule(scheduleKey: string): void {
+  scrapeTask?.stop();
+  scrapeTask = null;
+
+  const option = SCRAPE_SCHEDULE_OPTIONS[scheduleKey];
+  if (!option?.cron || !_prisma) {
+    console.log('[scheduler] Scrape schedule: off');
+    return;
+  }
+
+  const prisma = _prisma;
+  scrapeTask = cron.schedule(option.cron, () => {
+    console.log(`[scheduler] Scheduled scrape (${scheduleKey}) triggered`);
+    scrapeAll(prisma).catch((err) =>
+      console.error('[scheduler] Scheduled scrape error:', err instanceof Error ? err.message : err)
+    );
+  });
+  console.log(`[scheduler] Scrape schedule set: ${option.label} (${option.cron})`);
 }
 
 // ---------------------------------------------------------------------------
