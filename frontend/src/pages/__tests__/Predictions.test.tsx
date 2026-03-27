@@ -7,10 +7,20 @@ import Predictions from '../Predictions';
 vi.mock('../../services/api', () => ({
   api: {
     getPredictions: vi.fn(),
+    getFixtures: vi.fn(),
   },
 }));
 
 import { api } from '../../services/api';
+
+// Minimal fixture that gives the component a current round to initialise from
+const mockFixture = {
+  id: 'fix-1',
+  round: { number: 1, isCurrent: true },
+  homeTeam: { id: 'MEL', name: 'Melbourne Storm', shortName: 'Storm' },
+  awayTeam: { id: 'PEN', name: 'Penrith Panthers', shortName: 'Panthers' },
+  status: 'upcoming',
+};
 
 const mockPrediction = {
   fixtureId: 'fix-1',
@@ -76,12 +86,18 @@ const mockApiData = {
 describe('Predictions page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Always resolve fixtures so the component can determine the current round
+    // and enable the predictions query
+    vi.mocked(api.getFixtures).mockResolvedValue([mockFixture]);
   });
 
-  it('shows loading spinner while query is pending', () => {
+  it('shows loading spinner while query is pending', async () => {
     vi.mocked(api.getPredictions).mockReturnValue(new Promise(() => {})); // never resolves
     renderWithProviders(<Predictions />);
-    expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+    // Spinner only appears after fixtures load (setting selectedRound) and predictions query fires
+    await waitFor(() => {
+      expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+    });
   });
 
   it('shows error message when API call fails', async () => {

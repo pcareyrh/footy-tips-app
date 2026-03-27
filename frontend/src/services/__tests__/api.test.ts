@@ -49,7 +49,7 @@ describe('api service', () => {
 
   it('submitITipFootyTips sends POST /api/itipfooty/submit with round in body', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(mockOkResponse({ success: true }));
-    await api.submitITipFootyTips(5);
+    await api.submitITipFootyTips({ round: 5 });
     const [url, opts] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
     expect(url).toContain('/api/itipfooty/submit');
     expect(opts.method).toBe('POST');
