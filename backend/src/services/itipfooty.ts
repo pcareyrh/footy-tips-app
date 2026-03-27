@@ -67,6 +67,12 @@ interface TipSubmission {
   confidence: string;
 }
 
+export interface PickOverride {
+  homeTeamId: string;
+  awayTeamId: string;
+  winnerId: string; // DB team ID of the team to pick
+}
+
 export interface SubmitResult {
   success: boolean;
   round: number;
@@ -299,10 +305,12 @@ export async function submitTipsToSite(
 
 /**
  * Main function: generate predictions and submit as tips to iTipFooty.
+ * If pickOverrides is provided, those selections are used instead of the prediction engine.
  */
 export async function submitTips(
   prisma: PrismaClient,
-  roundNum?: number
+  roundNum?: number,
+  pickOverrides?: PickOverride[]
 ): Promise<SubmitResult> {
   const errors: string[] = [];
   const tipSubmissions: TipSubmission[] = [];
@@ -375,9 +383,14 @@ export async function submitTips(
         continue;
       }
 
-      // Determine H or A based on predicted winner
-      const pick: 'H' | 'A' =
-        prediction.predictedWinnerId === game.homeTeamId ? 'H' : 'A';
+      // Use explicit override if provided, otherwise fall back to predicted winner
+      const override = pickOverrides?.find(
+        (o) =>
+          (o.homeTeamId === game.homeTeamId && o.awayTeamId === game.awayTeamId) ||
+          (o.homeTeamId === game.awayTeamId && o.awayTeamId === game.homeTeamId)
+      );
+      const winnerId = override?.winnerId ?? prediction.predictedWinnerId;
+      const pick: 'H' | 'A' = winnerId === game.homeTeamId ? 'H' : 'A';
       tips.set(game.gameNumber, pick);
 
       tipSubmissions.push({

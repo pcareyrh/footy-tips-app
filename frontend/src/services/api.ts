@@ -85,9 +85,9 @@ export const api = {
 
   // iTipFooty
   getITipFootyStatus: () => fetchJson<any>('/itipfooty/status'),
-  submitITipFootyTips: (round?: number) =>
+  submitITipFootyTips: (data?: { round?: number; picks?: Array<{ homeTeamId: string; awayTeamId: string; winnerId: string }> }) =>
     fetchJson<any>('/itipfooty/submit', {
       method: 'POST',
-      body: JSON.stringify(round != null ? { round } : {}),
+      body: JSON.stringify(data ?? {}),
     }),
 };

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
-import { submitTips, isConfigured } from '../services/itipfooty.js';
+import { submitTips, isConfigured, PickOverride } from '../services/itipfooty.js';
 
 export const itipfootyRoutes = Router();
 
@@ -24,7 +24,8 @@ itipfootyRoutes.post('/submit', async (req, res) => {
     }
 
     const round = req.body.round ? parseInt(req.body.round, 10) : undefined;
-    const result = await submitTips(prisma, round);
+    const picks = Array.isArray(req.body.picks) ? req.body.picks as PickOverride[] : undefined;
+    const result = await submitTips(prisma, round, picks);
 
     res.json(result);
   } catch (err) {
