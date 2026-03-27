@@ -78,10 +78,43 @@ export async function scrapeFixtures(prisma: PrismaClient, season: string = '202
 
 /**
  * Scrape all data for current season: current round fixtures + ladder + team stats.
+ *
+ * Also lazily bootstraps 2025 historical data on first run. The prediction engine
+ * needs 2025 ladder entries (ladderPos2025, pd2025) and 2025 fixture results
+ * (recentForm, home/away records, attack/defence avg scores). Since the 2025
+ * season is complete this is a one-time cost — subsequent scrapes skip it.
  */
 export async function scrapeAll(prisma: PrismaClient, season: string = '2026'): Promise<ScrapeResult[]> {
   const results = await scrapeCurrentRound(prisma, parseInt(season));
   results.push(await scrapeTeamStats(prisma, season));
+
+  // Ensure the 2025 season row exists before inserting child records
+  await prisma.season.upsert({
+    where: { id: '2025' },
+    update: {},
+    create: { id: '2025', year: 2025, current: false },
+  });
+
+  // Bootstrap 2025 ladder — one API call, skipped once data is present
+  const ladder2025Count = await prisma.ladderEntry.count({ where: { season: '2025' } });
+  if (ladder2025Count === 0) {
+    console.log('[scrapeAll] Fetching 2025 ladder (one-time bootstrap)...');
+    results.push(await fetchLadder(prisma, 2025));
+  }
+
+  // Bootstrap 2025 fixture results — needed for recentForm, home/away records,
+  // attack/defence scoring averages. Skipped once > 100 fixtures are present.
+  const fixture2025Count = await prisma.fixture.count({
+    where: { roundId: { startsWith: '2025-' } },
+  });
+  if (fixture2025Count < 100) {
+    console.log('[scrapeAll] Fetching 2025 season fixtures (one-time bootstrap)...');
+    const drawResults = await fetchSeasonDraw(prisma, 2025);
+    results.push(...drawResults);
+    // Compute team stats from the newly imported fixture data
+    results.push(await computeTeamStats(prisma, 2025));
+  }
+
   return results;
 }
 
