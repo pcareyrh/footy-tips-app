@@ -97,3 +97,50 @@ describe('GET /api/analytics/by-team', () => {
     }
   });
 });
+
+describe('GET /api/analytics/by-round', () => {
+  it('returns empty array when no picks exist with results', async () => {
+    // Temporarily remove results from all picks to test the empty case
+    await testPrisma.pick.updateMany({ data: { result: null } });
+
+    const res = await request(app).get('/api/analytics/by-round');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+
+    // Restore picks with results for subsequent tests
+    const allPicks = await testPrisma.pick.findMany();
+    for (let i = 0; i < allPicks.length; i++) {
+      await testPrisma.pick.update({
+        where: { id: allPicks[i].id },
+        data: { result: i < 3 ? 'correct' : 'incorrect' },
+      });
+    }
+  });
+
+  it('groups picks by round with correct counts', async () => {
+    const res = await request(app).get('/api/analytics/by-round');
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBeGreaterThan(0);
+    // Each entry has roundId, round, correct, total, incorrect fields
+    for (const entry of res.body) {
+      expect(entry).toHaveProperty('roundId');
+      expect(entry).toHaveProperty('round');
+      expect(entry).toHaveProperty('correct');
+      expect(entry).toHaveProperty('total');
+      expect(entry).toHaveProperty('incorrect');
+      expect(entry.correct + entry.incorrect).toBe(entry.total);
+    }
+  });
+
+  it('calculates accuracy per round', async () => {
+    const res = await request(app).get('/api/analytics/by-round');
+    expect(res.status).toBe(200);
+    for (const entry of res.body) {
+      expect(entry).toHaveProperty('accuracy');
+      if (entry.total > 0) {
+        const expected = Math.round((entry.correct / entry.total) * 1000) / 10;
+        expect(entry.accuracy).toBeCloseTo(expected, 5);
+      }
+    }
+  });
+});

@@ -459,6 +459,102 @@ describe('submitTips()', () => {
     expect(result.message).toContain('Network timeout');
   });
 
+  it('persists picks to Pick table after successful submission', async () => {
+    vi.mocked(predictRound).mockResolvedValueOnce([
+      {
+        fixtureId: 'fix-1',
+        homeTeam: { id: 'MEL' } as never,
+        awayTeam: { id: 'PEN' } as never,
+        predictedWinnerId: 'MEL',
+        predictedWinner: 'Storm',
+        confidence: 'HIGH',
+        confidenceScore: 70,
+        factors: [],
+        summary: '',
+        venue: 'AAMI Park',
+        h2h: '',
+      },
+    ]);
+
+    (mockPrisma.fixture.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      round: { number: 1 },
+    });
+
+    // fixture.findFirst returns a real fixture for pick persistence
+    (mockPrisma.fixture.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 'fix-1',
+      homeTeamId: 'MEL',
+      awayTeamId: 'PEN',
+    });
+
+    (fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        status: 302,
+        headers: { getSetCookie: () => ['PHPSESSID=sess1; Path=/'] },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => MOCK_TIPPING_HTML,
+      })
+      .mockResolvedValueOnce({ status: 302 });
+
+    await submitTips(mockPrisma, 1);
+
+    // pick.findFirst is called to check for existing pick — it returns null (default)
+    // so pick.create should be called
+    expect(mockPrisma.pick.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fixtureId: 'fix-1',
+          pickedTeamId: 'MEL',
+        }),
+      })
+    );
+  });
+
+  it('does not persist picks when submission fails', async () => {
+    vi.mocked(predictRound).mockResolvedValueOnce([
+      {
+        fixtureId: 'fix-1',
+        homeTeam: { id: 'MEL' } as never,
+        awayTeam: { id: 'PEN' } as never,
+        predictedWinnerId: 'MEL',
+        predictedWinner: 'Storm',
+        confidence: 'HIGH',
+        confidenceScore: 70,
+        factors: [],
+        summary: '',
+        venue: 'AAMI Park',
+        h2h: '',
+      },
+    ]);
+
+    (mockPrisma.fixture.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      round: { number: 1 },
+    });
+
+    // Login succeeds, tipping page fetch succeeds, but submission fails
+    (fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        status: 302,
+        headers: { getSetCookie: () => ['PHPSESSID=sess1; Path=/'] },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => MOCK_TIPPING_HTML,
+      })
+      .mockResolvedValueOnce({
+        status: 500,
+        text: async () => 'Internal Server Error',
+      });
+
+    const result = await submitTips(mockPrisma, 1);
+    expect(result.success).toBe(false);
+
+    // pick.create should NOT have been called since submission failed
+    expect(mockPrisma.pick.create).not.toHaveBeenCalled();
+  });
+
   it('logs to DataSourceLog on success', async () => {
     vi.mocked(predictRound).mockResolvedValueOnce([
       {

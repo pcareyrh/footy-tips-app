@@ -105,3 +105,34 @@ describe('PUT /api/fixtures/:id', () => {
     });
   });
 });
+
+describe('GET /api/fixtures?current=true', () => {
+  it('returns only fixtures in the current round', async () => {
+    // seedMinimal creates a round with isCurrent: true and one fixture in it
+    const res = await request(app).get('/api/fixtures?current=true');
+    expect(res.status).toBe(200);
+    // All returned fixtures belong to rounds with isCurrent: true
+    expect(res.body.length).toBeGreaterThan(0);
+    for (const fixture of res.body) {
+      expect(fixture.round.isCurrent).toBe(true);
+    }
+  });
+
+  it('returns empty array when no round is current', async () => {
+    // Temporarily mark the current round as not current
+    await testPrisma.round.update({
+      where: { id: '2026-R1' },
+      data: { isCurrent: false },
+    });
+
+    const res = await request(app).get('/api/fixtures?current=true');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(0);
+
+    // Restore
+    await testPrisma.round.update({
+      where: { id: '2026-R1' },
+      data: { isCurrent: true },
+    });
+  });
+});
