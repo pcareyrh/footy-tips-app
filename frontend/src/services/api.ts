@@ -48,6 +48,7 @@ export const api = {
   getAnalyticsSummary: () => fetchJson<any>('/analytics/summary'),
   getAnalyticsByFactor: () => fetchJson<any[]>('/analytics/by-factor'),
   getAnalyticsByTeam: () => fetchJson<any[]>('/analytics/by-team'),
+  getAnalyticsByRound: () => fetchJson<any[]>('/analytics/by-round'),
 
   // Injuries
   getInjuries: (params?: Record<string, string>) => {

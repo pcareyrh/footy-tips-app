@@ -434,6 +434,30 @@ export async function submitTips(
       },
     });
 
+    // 7. Persist picks to the Pick table for analytics tracking
+    try {
+      const roundId = `${season}-R${actualRound}`;
+      for (const game of formData.games) {
+        if (game.locked || !game.homeTeamId || !game.awayTeamId) continue;
+        const submission = tipSubmissions.find((t) => t.gameNumber === game.gameNumber);
+        if (!submission) continue;
+        const fixture = await prisma.fixture.findFirst({
+          where: { homeTeamId: game.homeTeamId, awayTeamId: game.awayTeamId, roundId },
+        });
+        if (!fixture) continue;
+        const pickedTeamId = tips.get(game.gameNumber) === 'H' ? game.homeTeamId! : game.awayTeamId!;
+        const confidence = (submission.confidence ?? 'MEDIUM').toLowerCase();
+        const existing = await prisma.pick.findFirst({ where: { fixtureId: fixture.id } });
+        if (existing) {
+          await prisma.pick.update({ where: { id: existing.id }, data: { pickedTeamId, confidence } });
+        } else {
+          await prisma.pick.create({ data: { fixtureId: fixture.id, pickedTeamId, confidence } });
+        }
+      }
+    } catch (pickErr) {
+      console.error('[iTipFooty] Failed to persist picks:', pickErr instanceof Error ? pickErr.message : pickErr);
+    }
+
     return {
       success: true,
       round: actualRound,

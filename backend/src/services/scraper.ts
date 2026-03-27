@@ -2,6 +2,36 @@ import { PrismaClient } from '@prisma/client';
 import { fetchDraw, fetchLadder, fetchSeasonDraw, fetchTeamStats, computeTeamStats, ScrapeResult } from './nrl-api.js';
 import { fetchRoundDetails, fetchSeasonRoundDetails } from './rlp-scraper.js';
 
+/**
+ * Sync pick results from completed fixtures.
+ * Called after scraping so correct/incorrect is set for analytics.
+ */
+export async function syncPickResults(prisma: PrismaClient): Promise<void> {
+  const pendingPicks = await prisma.pick.findMany({
+    where: { result: null },
+    include: { fixture: true },
+  });
+
+  for (const pick of pendingPicks) {
+    const fixture = pick.fixture;
+    if (fixture.status !== 'completed' || !fixture.result) continue;
+
+    let result: string;
+    if (fixture.result === 'draw') {
+      result = 'draw';
+    } else if (
+      (fixture.result === 'home' && pick.pickedTeamId === fixture.homeTeamId) ||
+      (fixture.result === 'away' && pick.pickedTeamId === fixture.awayTeamId)
+    ) {
+      result = 'correct';
+    } else {
+      result = 'incorrect';
+    }
+
+    await prisma.pick.update({ where: { id: pick.id }, data: { result } });
+  }
+}
+
 export type { ScrapeResult };
 
 /**
@@ -52,6 +82,8 @@ export async function scrapeCurrentRound(prisma: PrismaClient, season: number = 
 
   // Fetch ladder
   results.push(await fetchLadder(prisma, season));
+
+  await syncPickResults(prisma);
 
   return results;
 }
@@ -114,6 +146,8 @@ export async function scrapeAll(prisma: PrismaClient, season: string = '2026'): 
     // Compute team stats from the newly imported fixture data
     results.push(await computeTeamStats(prisma, 2025));
   }
+
+  await syncPickResults(prisma);
 
   return results;
 }
