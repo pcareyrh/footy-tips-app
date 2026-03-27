@@ -22,7 +22,7 @@ test.describe('Settings — iTipFooty section', () => {
       });
 
       await page.goto('/settings');
-      await expect(page.getByText(/connected/i)).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(/connected as/i)).toBeVisible({ timeout: 10000 });
     });
 
     test('shows "Not configured" when status is unconfigured', async ({ page }) => {
