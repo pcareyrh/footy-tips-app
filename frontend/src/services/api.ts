@@ -90,4 +90,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data ?? {}),
     }),
+
+  // Tips page
+  getTipsCurrentRound: () => fetchJson<any>('/tips/current-round'),
+  setTipOverride: (fixtureId: string, winnerId: string) =>
+    fetchJson<any>(`/tips/overrides/${fixtureId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ winnerId }),
+    }),
+  deleteTipOverride: (fixtureId: string) =>
+    fetchJson<void>(`/tips/overrides/${fixtureId}`, { method: 'DELETE' }),
+  getTipsSchedule: () => fetchJson<any[]>('/tips/schedule'),
+  getTipsHistory: (limit = 20) => fetchJson<any[]>(`/tips/history?limit=${limit}`),
+  submitTipsNow: (round?: number) =>
+    fetchJson<any>('/tips/submit', {
+      method: 'POST',
+      body: JSON.stringify(round !== undefined ? { round } : {}),
+    }),
 };

@@ -1,17 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plug, RefreshCw, Info, Download, Clock, CheckCircle, AlertCircle, Loader2, Send, ChevronDown } from 'lucide-react';
+import { Plug, RefreshCw, Info, Download, Clock, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
 import { cn } from '../lib/utils';
 import { useState, useEffect, useRef } from 'react';
-
-const confidenceColors: Record<string, string> = {
-  'VERY HIGH': 'text-emerald-400',
-  'HIGH': 'text-blue-400',
-  'MEDIUM': 'text-yellow-400',
-  'LOW': 'text-red-400',
-};
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -34,7 +27,6 @@ export default function Settings() {
     refetchInterval: (query) => query.state.data?.historicalImport?.running ? 3000 : 10000,
   });
 
-  // When historical import finishes, refresh predictions and team stats
   useEffect(() => {
     const isRunning = scrapeStatus?.historicalImport?.running ?? false;
     if (wasImporting.current && !isRunning) {
@@ -49,41 +41,6 @@ export default function Settings() {
   const { data: scrapeLogs = [] } = useQuery({
     queryKey: ['scrapeLogs'],
     queryFn: () => api.getScrapeLogs(10),
-  });
-
-  const { data: itipStatus } = useQuery({
-    queryKey: ['itipfootyStatus'],
-    queryFn: () => api.getITipFootyStatus(),
-  });
-
-  const [showReview, setShowReview] = useState(false);
-  const [overridePicks, setOverridePicks] = useState<Record<string, string>>({});
-
-  const { data: predData, isLoading: predLoading } = useQuery({
-    queryKey: ['itipfooty-preview'],
-    queryFn: () => api.getPredictions(),
-    enabled: showReview,
-    staleTime: 0,
-  });
-
-  // Initialise picks to predicted values when preview loads
-  useEffect(() => {
-    if (predData?.predictions && showReview) {
-      const initial: Record<string, string> = {};
-      for (const p of predData.predictions) {
-        initial[`${p.homeTeam.id}_${p.awayTeam.id}`] = p.predictedWinnerId;
-      }
-      setOverridePicks(initial);
-    }
-  }, [predData, showReview]);
-
-  const submitTips = useMutation({
-    mutationFn: (data: { picks: Array<{ homeTeamId: string; awayTeamId: string; winnerId: string }> }) =>
-      api.submitITipFootyTips(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['scrapeLogs'] });
-      setShowReview(false);
-    },
   });
 
   const togglePlugin = useMutation({
@@ -118,7 +75,6 @@ export default function Settings() {
       {/* Scrape Controls */}
       <Card title="Data Scraper" subtitle="Fetch latest data from NRL.com on demand">
         <div className="space-y-4">
-          {/* Target selection */}
           <div>
             <label className="mb-2 block text-sm font-medium text-zinc-300">Scrape Target</label>
             <div className="flex flex-wrap gap-2">
@@ -139,7 +95,6 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Scrape button */}
           <button
             onClick={() => scrape.mutate(scrapeTargets)}
             disabled={scrape.isPending}
@@ -158,7 +113,6 @@ export default function Settings() {
             {scrape.isPending ? 'Scraping...' : 'Scrape Now'}
           </button>
 
-          {/* Last result */}
           {scrape.isSuccess && (
             <div className={cn(
               'rounded-lg border p-3 text-sm',
@@ -189,7 +143,6 @@ export default function Settings() {
             </div>
           )}
 
-          {/* Last run info */}
           {scrapeStatus?.lastRun && (
             <div className="flex items-center gap-2 text-xs text-zinc-500">
               <Clock size={12} />
@@ -197,7 +150,6 @@ export default function Settings() {
             </div>
           )}
 
-          {/* Historical import progress */}
           {scrapeStatus?.historicalImport?.running && (
             <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-300">
               <div className="flex items-center gap-2">
@@ -244,174 +196,6 @@ export default function Settings() {
           </div>
         </Card>
       )}
-
-      {/* iTipFooty Integration */}
-      <Card title="iTipFooty Integration" subtitle="Auto-submit prediction picks to iTipFooty.com.au">
-        <div className="space-y-4">
-          {itipStatus?.configured ? (
-            <>
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle size={14} className="text-emerald-500" />
-                <span className="text-zinc-300">
-                  Connected as <span className="font-medium text-white">{itipStatus.username}</span>
-                  {' '}· Comp #{itipStatus.compId}
-                </span>
-              </div>
-
-              {/* Review & Submit button */}
-              <button
-                onClick={() => { setShowReview(v => !v); submitTips.reset(); }}
-                disabled={submitTips.isPending}
-                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-blue-500 active:bg-blue-700 disabled:cursor-not-allowed disabled:bg-zinc-700"
-              >
-                <ChevronDown size={16} className={cn('transition-transform', showReview && 'rotate-180')} />
-                Review &amp; Submit Tips
-              </button>
-
-              {/* Review panel */}
-              {showReview && (
-                <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-4 space-y-4">
-                  {predLoading && (
-                    <div className="flex justify-center py-4">
-                      <Loader2 size={20} className="animate-spin text-zinc-400" />
-                    </div>
-                  )}
-
-                  {predData && predData.predictions.length === 0 && (
-                    <p className="text-sm text-zinc-500 text-center py-2">No upcoming fixtures to tip.</p>
-                  )}
-
-                  {predData && predData.predictions.length > 0 && (
-                    <>
-                      <p className="text-xs text-zinc-500">
-                        Round {predData.round} · Select your pick for each match. Defaults are AI predictions.
-                      </p>
-                      <div className="space-y-2">
-                        {predData.predictions.map((p: any) => {
-                          const key = `${p.homeTeam.id}_${p.awayTeam.id}`;
-                          const winnerId = overridePicks[key] ?? p.predictedWinnerId;
-                          const isPredicted = (id: string) => id === p.predictedWinnerId;
-                          const isSelected = (id: string) => id === winnerId;
-                          return (
-                            <div key={p.fixtureId} className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2">
-                              <button
-                                onClick={() => setOverridePicks(prev => ({ ...prev, [key]: p.homeTeam.id }))}
-                                className={cn(
-                                  'flex-1 rounded-md px-2 py-1.5 text-sm font-medium transition-colors text-left',
-                                  isSelected(p.homeTeam.id)
-                                    ? 'bg-emerald-600/30 text-emerald-300 ring-1 ring-emerald-500/50'
-                                    : 'text-zinc-400 hover:bg-zinc-700'
-                                )}
-                              >
-                                {p.homeTeam.name}
-                                {isPredicted(p.homeTeam.id) && !isSelected(p.homeTeam.id) && (
-                                  <span className="ml-1 text-[10px] text-zinc-600">predicted</span>
-                                )}
-                              </button>
-                              <span className="text-xs text-zinc-600 shrink-0">
-                                vs
-                                <span className={cn('ml-1.5', confidenceColors[p.confidence] ?? 'text-zinc-500')}>
-                                  {p.confidenceScore}%
-                                </span>
-                              </span>
-                              <button
-                                onClick={() => setOverridePicks(prev => ({ ...prev, [key]: p.awayTeam.id }))}
-                                className={cn(
-                                  'flex-1 rounded-md px-2 py-1.5 text-sm font-medium transition-colors text-right',
-                                  isSelected(p.awayTeam.id)
-                                    ? 'bg-emerald-600/30 text-emerald-300 ring-1 ring-emerald-500/50'
-                                    : 'text-zinc-400 hover:bg-zinc-700'
-                                )}
-                              >
-                                {isPredicted(p.awayTeam.id) && !isSelected(p.awayTeam.id) && (
-                                  <span className="mr-1 text-[10px] text-zinc-600">predicted</span>
-                                )}
-                                {p.awayTeam.name}
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <div className="flex items-center gap-3 pt-1">
-                        <button
-                          onClick={() => {
-                            const picks = predData.predictions.map((p: any) => ({
-                              homeTeamId: p.homeTeam.id,
-                              awayTeamId: p.awayTeam.id,
-                              winnerId: overridePicks[`${p.homeTeam.id}_${p.awayTeam.id}`] ?? p.predictedWinnerId,
-                            }));
-                            submitTips.mutate({ picks });
-                          }}
-                          disabled={submitTips.isPending}
-                          className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-zinc-700"
-                        >
-                          {submitTips.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                          {submitTips.isPending ? 'Submitting...' : 'Confirm & Submit'}
-                        </button>
-                        <button
-                          onClick={() => setShowReview(false)}
-                          className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {submitTips.isSuccess && (
-                <div className={cn(
-                  'rounded-lg border p-3 text-sm',
-                  submitTips.data.success
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                    : 'border-red-500/30 bg-red-500/10 text-red-300'
-                )}>
-                  <p className="font-medium">
-                    {submitTips.data.success ? '✓' : '✗'} {submitTips.data.message}
-                  </p>
-                  {submitTips.data.tips?.length > 0 && (
-                    <div className="mt-2 space-y-1 text-xs opacity-80">
-                      {submitTips.data.tips.map((tip: any, i: number) => (
-                        <p key={i}>
-                          {tip.homeTeam} vs {tip.awayTeam}
-                          {' → '}<span className="font-bold text-white">{tip.pickedTeam}</span>
-                          {' '}({tip.confidence})
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                  {submitTips.data.errors?.length > 0 && (
-                    <div className="mt-2 text-xs opacity-70">
-                      {submitTips.data.errors.map((err: string, i: number) => (
-                        <p key={i} className="text-yellow-300">⚠ {err}</p>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {submitTips.isError && (
-                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
-                  <p className="font-medium">✗ Submission failed</p>
-                  <p className="mt-1 text-xs opacity-80">{(submitTips.error as Error).message}</p>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="flex items-center gap-2 text-sm text-zinc-500">
-              <AlertCircle size={14} />
-              <span>
-                Not configured. Set <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">ITIPFOOTY_USERNAME</code>,{' '}
-                <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">ITIPFOOTY_PASSWORD</code>, and{' '}
-                <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">ITIPFOOTY_COMP_ID</code> in{' '}
-                <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">backend/.env</code>
-              </span>
-            </div>
-          )}
-        </div>
-      </Card>
 
       {/* Plugins */}
       <Card title="Plugins" subtitle="Manage data source plugins">

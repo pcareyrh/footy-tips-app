@@ -69,10 +69,21 @@ model Fixture {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  round    Round  @relation(fields: [roundId], references: [id])
-  homeTeam Team   @relation("HomeTeam", fields: [homeTeamId], references: [id])
-  awayTeam Team   @relation("AwayTeam", fields: [awayTeamId], references: [id])
-  picks    Pick[]
+  round       Round        @relation(fields: [roundId], references: [id])
+  homeTeam    Team         @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam    Team         @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  picks       Pick[]
+  tipOverride TipOverride?
+}
+
+model TipOverride {
+  id        String   @id @default(cuid())
+  fixtureId String   @unique
+  winnerId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  fixture   Fixture  @relation(fields: [fixtureId], references: [id])
 }
 
 model TeamStat {

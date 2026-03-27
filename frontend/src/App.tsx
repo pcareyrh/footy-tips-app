@@ -7,6 +7,7 @@ import MatchDetail from './pages/MatchDetail';
 import Analytics from './pages/Analytics';
 import Predictions from './pages/Predictions';
 import Settings from './pages/Settings';
+import Tips from './pages/Tips';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/matches/:id" element={<MatchDetail />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/predictions" element={<Predictions />} />
+            <Route path="/tips" element={<Tips />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </Layout>

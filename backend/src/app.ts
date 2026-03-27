@@ -12,6 +12,7 @@ import { injuryRoutes } from './routes/injuries.js';
 import { scrapeRoutes } from './routes/scrape.js';
 import { predictionsRoutes } from './routes/predictions.js';
 import { itipfootyRoutes } from './routes/itipfooty.js';
+import { tipsRoutes } from './routes/tips.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,6 +33,7 @@ app.use('/api/injuries', injuryRoutes);
 app.use('/api/scrape', scrapeRoutes);
 app.use('/api/predictions', predictionsRoutes);
 app.use('/api/itipfooty', itipfootyRoutes);
+app.use('/api/tips', tipsRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {

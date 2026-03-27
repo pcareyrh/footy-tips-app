@@ -9,6 +9,7 @@ import {
   Activity,
   Menu,
   X,
+  Send,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -16,6 +17,7 @@ const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/matches', label: 'Matches', icon: Trophy },
   { to: '/predictions', label: 'Predictions', icon: TrendingUp },
+  { to: '/tips', label: 'Tips', icon: Send },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
