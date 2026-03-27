@@ -32,8 +32,23 @@ export async function scrapeCurrentRound(prisma: PrismaClient, season: number = 
     roundNum = currentRound?.number ?? 1;
   }
 
-  // Fetch fixtures for current round only (also updates isCurrent flag)
+  // Fetch fixtures for current round only
   results.push(await fetchDraw(prisma, season, roundNum));
+
+  // Explicitly mark the detected round as current in the DB.
+  // fetchDraw relies on f.isCurrentRound from the NRL API which is not always
+  // set reliably, so we force-update it here using the roundNum we detected
+  // from the top-level selectedRoundId field (which is always present).
+  const roundId = `${season}-R${roundNum}`;
+  await prisma.round.upsert({
+    where: { id: roundId },
+    update: { isCurrent: true },
+    create: { id: roundId, seasonId: String(season), number: roundNum, name: `Round ${roundNum}`, isCurrent: true },
+  });
+  await prisma.round.updateMany({
+    where: { seasonId: String(season), id: { not: roundId } },
+    data: { isCurrent: false },
+  });
 
   // Fetch ladder
   results.push(await fetchLadder(prisma, season));

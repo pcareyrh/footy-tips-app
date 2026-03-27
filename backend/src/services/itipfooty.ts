@@ -137,28 +137,45 @@ export async function login(): Promise<string> {
 
 /**
  * Fetch the tipping page and parse the form structure.
+ * If round is omitted, iTipFooty serves the current round and the actual
+ * round number is detected from the final URL after redirect.
  */
 export async function fetchTippingPage(
   sessionCookie: string,
-  round: number
+  round?: number
 ): Promise<ITipFormData> {
   const { compId } = getCredentials();
 
-  const res = await fetch(
-    `${BASE_URL}/tipping.php?compid=${compId}&round=${round}`,
-    {
-      headers: {
-        Cookie: sessionCookie,
-        'User-Agent': USER_AGENT,
-      },
-    }
-  );
+  const url = round != null
+    ? `${BASE_URL}/tipping.php?compid=${compId}&round=${round}`
+    : `${BASE_URL}/tipping.php?compid=${compId}`;
+
+  const res = await fetch(url, {
+    headers: {
+      Cookie: sessionCookie,
+      'User-Agent': USER_AGENT,
+    },
+  });
 
   if (!res.ok) {
     throw new Error(`Failed to fetch tipping page: ${res.status}`);
   }
 
   const html = await res.text();
+
+  // Detect the actual round being shown when none was specified.
+  // iTipFooty redirects to ?round=N for the current round.
+  let detectedRound = round;
+  if (detectedRound == null) {
+    try {
+      detectedRound = parseInt(new URL(res.url).searchParams.get('round') ?? '', 10) || undefined;
+    } catch { /* ignore */ }
+    // Fallback: scan the HTML for a round=N occurrence
+    if (!detectedRound) {
+      const m = html.match(/[?&]round=(\d+)/);
+      if (m) detectedRound = parseInt(m[1], 10);
+    }
+  }
 
   // Extract hidden form fields
   const postMemberId =
@@ -253,7 +270,7 @@ export async function fetchTippingPage(
     currentJokerCount,
     games,
     marginIncluded,
-    round,
+    round: detectedRound ?? round ?? 0,
   };
 }
 
@@ -318,38 +335,23 @@ export async function submitTips(
   const tipSubmissions: TipSubmission[] = [];
 
   try {
-    // 1. Get predictions for the round
     const season = String(new Date().getFullYear());
-    const predictions = await predictRound(prisma, season, roundNum);
 
-    if (predictions.length === 0) {
-      return {
-        success: false,
-        round: roundNum ?? 0,
-        tips: [],
-        message: 'No predictions available for this round',
-        errors: ['No upcoming fixtures found'],
-      };
-    }
-
-    // Determine actual round number from predictions
-    const firstFixture = await prisma.fixture.findUnique({
-      where: { id: predictions[0].fixtureId },
-      include: { round: true },
-    });
-    const actualRound = roundNum ?? firstFixture?.round?.number ?? 0;
-
-    // 2. Login to iTipFooty
+    // 1. Login to iTipFooty
     console.log('[iTipFooty] Logging in...');
     const sessionCookie = await login();
     console.log('[iTipFooty] Login successful');
 
-    // 3. Fetch and parse the tipping page
-    console.log(`[iTipFooty] Fetching tipping page for Round ${actualRound}...`);
-    const formData = await fetchTippingPage(sessionCookie, actualRound);
-    console.log(
-      `[iTipFooty] Found ${formData.games.length} games, ${formData.games.filter((g) => !g.locked).length} unlocked`
-    );
+    // 2. Fetch and parse the tipping page — let iTipFooty auto-select the current round
+    //    (passing roundNum only if explicitly provided by the caller)
+    console.log('[iTipFooty] Fetching tipping page...');
+    const formData = await fetchTippingPage(sessionCookie, roundNum);
+    const actualRound = formData.round || roundNum || 0;
+    console.log(`[iTipFooty] iTipFooty is showing Round ${actualRound} (${formData.games.length} games, ${formData.games.filter((g) => !g.locked).length} unlocked)`);
+
+    // 3. Get predictions for the round iTipFooty is showing
+    const predictions = await predictRound(prisma, season, actualRound || undefined);
+    console.log(`[iTipFooty] Got ${predictions.length} predictions for Round ${actualRound}`);
 
     // 4. Map predictions to iTipFooty game selections
     const tips = new Map<number, 'H' | 'A'>();
