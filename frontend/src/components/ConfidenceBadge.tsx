@@ -4,10 +4,11 @@ const confidenceConfig = {
   low: { label: 'Low', variant: 'danger' as const },
   medium: { label: 'Medium', variant: 'warning' as const },
   high: { label: 'High', variant: 'success' as const },
+  'very high': { label: 'Very High', variant: 'success' as const },
 };
 
 interface ConfidenceBadgeProps {
-  level: 'low' | 'medium' | 'high';
+  level: 'low' | 'medium' | 'high' | 'very high';
 }
 
 export default function ConfidenceBadge({ level }: ConfidenceBadgeProps) {

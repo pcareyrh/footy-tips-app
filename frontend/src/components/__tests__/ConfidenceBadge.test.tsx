@@ -35,4 +35,21 @@ describe('ConfidenceBadge', () => {
     const el = screen.getByText('High Confidence');
     expect(el.className).toContain('text-emerald-400');
   });
+
+  it('renders "Very High Confidence" for level="very high"', () => {
+    render(<ConfidenceBadge level="very high" />);
+    expect(screen.getByText('Very High Confidence')).toBeInTheDocument();
+  });
+
+  it('uses success (emerald) variant for "very high"', () => {
+    render(<ConfidenceBadge level="very high" />);
+    const el = screen.getByText('Very High Confidence');
+    expect(el.className).toContain('text-emerald-400');
+  });
+
+  it('does not crash when level is "very high" (regression: blank screen bug)', () => {
+    // confidence="very high" is stored by itipfooty.ts via VERY_HIGH.toLowerCase()
+    // and was missing from confidenceConfig, causing a TypeError that blanked the Matches page
+    expect(() => render(<ConfidenceBadge level="very high" />)).not.toThrow();
+  });
 });
