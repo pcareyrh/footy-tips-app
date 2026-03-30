@@ -62,7 +62,13 @@ export async function scrapeCurrentRound(prisma: PrismaClient, season: number = 
     roundNum = currentRound?.number ?? 1;
   }
 
-  // Fetch fixtures for current round only
+  // Fetch fixtures for current round and the previous round.
+  // The NRL API advances selectedRoundId to the new round before all games
+  // in the previous round are complete, so scraping only the current round
+  // leaves any remaining "upcoming" fixtures from the prior round stale.
+  if (roundNum > 1) {
+    results.push(await fetchDraw(prisma, season, roundNum - 1));
+  }
   results.push(await fetchDraw(prisma, season, roundNum));
 
   // Explicitly mark the detected round as current in the DB.
