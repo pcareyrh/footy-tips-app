@@ -500,6 +500,22 @@ export async function predictMatch(
     }
   }
 
+  // Factor 10: Crowd Sentiment — iTipFooty tipping ratio (weight: 8 max)
+  const itipStat = await prisma.iTipMatchStat.findUnique({ where: { fixtureId } });
+  if (itipStat) {
+    const tipDiff = (itipStat.homeTipPct - itipStat.awayTipPct) / 100; // -1 to +1
+    const sentimentWeight = Math.min(Math.abs(tipDiff) * 10, 8);
+    if (sentimentWeight > 0.1) {
+      if (tipDiff > 0) homeScore += sentimentWeight; else awayScore += sentimentWeight;
+      factors.push({
+        name: 'Crowd Sentiment (iTipFooty)',
+        favouring: tipDiff > 0 ? home.name : tipDiff < 0 ? away.name : 'Even',
+        weight: sentimentWeight,
+        detail: `${itipStat.homeTipPct.toFixed(0)}% tipped ${home.name} vs ${itipStat.awayTipPct.toFixed(0)}% tipped ${away.name}`,
+      });
+    }
+  }
+
   // Baseline home advantage
   homeScore += 3;
   factors.push({

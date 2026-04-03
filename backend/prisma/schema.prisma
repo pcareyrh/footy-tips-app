@@ -72,8 +72,9 @@ model Fixture {
   round       Round        @relation(fields: [roundId], references: [id])
   homeTeam    Team         @relation("HomeTeam", fields: [homeTeamId], references: [id])
   awayTeam    Team         @relation("AwayTeam", fields: [awayTeamId], references: [id])
-  picks       Pick[]
-  tipOverride TipOverride?
+  picks         Pick[]
+  tipOverride   TipOverride?
+  itipMatchStat ITipMatchStat?
 }
 
 model TipOverride {
@@ -200,4 +201,22 @@ model AppSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+model ITipMatchStat {
+  id          String   @id @default(cuid())
+  fixtureId   String   @unique
+  season      String
+  roundNumber Int
+  gameNumber  Int      // 1-8 per round on iTipFooty
+
+  homeTipPct  Float    // crowd tipping ratio, e.g. 28.0
+  awayTipPct  Float    // e.g. 72.0
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  fixture     Fixture  @relation(fields: [fixtureId], references: [id])
+
+  @@unique([season, roundNumber, gameNumber])
 }

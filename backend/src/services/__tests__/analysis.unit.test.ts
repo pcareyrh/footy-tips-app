@@ -238,6 +238,7 @@ function makeMockPrisma(overrides: Record<string, unknown> = {}) {
     },
     injury: { findMany: vi.fn().mockResolvedValue([]) },
     teamStat: { findFirst: vi.fn().mockResolvedValue(null) },
+    iTipMatchStat: { findUnique: vi.fn().mockResolvedValue(null) },
     ...overrides,
   } as unknown as PrismaClient;
 }
@@ -360,5 +361,30 @@ describe('predictMatch', () => {
     const result = await predictMatch(prisma, 'fix-1', 'MEL', 'PEN', 'AAMI Park');
     // MEL is #1 vs PEN at #16, home advantage + better ladder → MEL should win
     expect(result.predictedWinnerId).toBe('MEL');
+  });
+
+  it('includes Crowd Sentiment factor when iTipMatchStat data is available', async () => {
+    const prisma = makeMockPrisma({
+      iTipMatchStat: {
+        findUnique: vi.fn().mockResolvedValue({
+          homeTipPct: 75,
+          awayTipPct: 25,
+        }),
+      },
+    });
+    const result = await predictMatch(prisma, 'fix-1', 'MEL', 'PEN', 'AAMI Park');
+    const sentimentFactor = result.factors.find(f => f.name === 'Crowd Sentiment (iTipFooty)');
+    expect(sentimentFactor).toBeDefined();
+    expect(sentimentFactor!.favouring).toBe('Storm');
+    expect(sentimentFactor!.weight).toBeGreaterThan(0);
+    expect(sentimentFactor!.detail).toContain('75%');
+    expect(sentimentFactor!.detail).toContain('25%');
+  });
+
+  it('omits Crowd Sentiment factor when no iTipMatchStat data exists', async () => {
+    const prisma = makeMockPrisma();
+    const result = await predictMatch(prisma, 'fix-1', 'MEL', 'PEN', 'AAMI Park');
+    const sentimentFactor = result.factors.find(f => f.name === 'Crowd Sentiment (iTipFooty)');
+    expect(sentimentFactor).toBeUndefined();
   });
 });

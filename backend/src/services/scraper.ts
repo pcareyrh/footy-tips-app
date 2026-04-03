@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { fetchDraw, fetchLadder, fetchSeasonDraw, fetchTeamStats, computeTeamStats, ScrapeResult } from './nrl-api.js';
 import { fetchRoundDetails, fetchSeasonRoundDetails } from './rlp-scraper.js';
+import { scrapeITipMatchStats, isConfigured as itipConfigured } from './itipfooty.js';
 
 /**
  * Sync pick results from completed fixtures.
@@ -126,6 +127,20 @@ export async function scrapeAll(prisma: PrismaClient, season: string = '2026'): 
   const results = await scrapeCurrentRound(prisma, parseInt(season));
   results.push(await scrapeTeamStats(prisma, season));
 
+  // Scrape iTipFooty crowd tipping ratios (only if credentials are configured)
+  if (itipConfigured()) {
+    try {
+      const currentRound = await prisma.round.findFirst({
+        where: { seasonId: season, isCurrent: true },
+      });
+      if (currentRound) {
+        results.push(await scrapeITipMatchStats(prisma, currentRound.number, season));
+      }
+    } catch (err) {
+      console.error('[scrapeAll] iTipFooty match stats scrape failed:', err instanceof Error ? err.message : err);
+    }
+  }
+
   // Ensure the 2025 season row exists before inserting child records
   await prisma.season.upsert({
     where: { id: '2025' },
@@ -164,6 +179,19 @@ export async function scrapeAll(prisma: PrismaClient, season: string = '2026'): 
  */
 export async function scrapeTeamStats(prisma: PrismaClient, season: string = '2026'): Promise<ScrapeResult> {
   return fetchTeamStats(prisma, parseInt(season));
+}
+
+/**
+ * Scrape iTipFooty crowd tipping ratios for the current round.
+ */
+export async function scrapeITipStats(prisma: PrismaClient, season: string = '2026'): Promise<ScrapeResult> {
+  const currentRound = await prisma.round.findFirst({
+    where: { seasonId: season, isCurrent: true },
+  });
+  if (!currentRound) {
+    return { source: 'itipfooty', type: 'match-stats', recordsAffected: 0, errors: ['No current round found'], details: '' };
+  }
+  return scrapeITipMatchStats(prisma, currentRound.number, season);
 }
 
 /**

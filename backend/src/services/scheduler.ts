@@ -16,7 +16,7 @@
 
 import * as cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
-import { submitTips, isConfigured, PickOverride } from './itipfooty.js';
+import { submitTips, isConfigured, PickOverride, scrapeITipMatchStats } from './itipfooty.js';
 import { scrapeCurrentRound, scrapeAll } from './scraper.js';
 
 let task: cron.ScheduledTask | null = null;
@@ -175,6 +175,12 @@ async function handlePreGameRescrape(prisma: PrismaClient, roundNum: number): Pr
   } catch (err) {
     console.error('[scheduler] Scrape failed:', err instanceof Error ? err.message : err);
     // Continue — use stale data rather than skip submission entirely
+  }
+
+  try {
+    await scrapeITipMatchStats(prisma, roundNum);
+  } catch (err) {
+    console.error('[scheduler] iTipFooty match stats scrape failed:', err instanceof Error ? err.message : err);
   }
 
   const overrides = await loadOverrides(prisma);

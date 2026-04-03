@@ -6,7 +6,7 @@ vi.mock('../analysis.js', () => ({
   predictRound: vi.fn(),
 }));
 
-import { login, fetchTippingPage, submitTipsToSite, submitTips, isConfigured } from '../itipfooty.js';
+import { login, fetchTippingPage, submitTipsToSite, submitTips, isConfigured, parseTeamStatsPage } from '../itipfooty.js';
 import { predictRound } from '../analysis.js';
 
 const MOCK_SESSION = 'PHPSESSID=abc123xyz';
@@ -648,5 +648,49 @@ describe('submitTips()', () => {
         }),
       })
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseTeamStatsPage
+// ---------------------------------------------------------------------------
+
+const MOCK_TEAMSTATS_HTML = `
+  <table class="table">
+    <tr><td><div align="center"><font size="2">Dragons</font></div></td>
+        <td><div align="center"><font size="2">Stats</font></div></td>
+        <td><div align="center"><font size="2">Cowboys</font></div></td></tr>
+    <tr class="bg-light">
+      <td><div align="center">28%</div></td>
+      <td><div align="center"><span>iTipFooty Tipping Ratio</span></div></td>
+      <td><div align="center">72%</div></td>
+    </tr>
+  </table>
+  <select name="roundgames" id="roundgames">
+    <option value="teamstats.php?compid=1&round=5&code=NRL&game=1" >Dolphins vs Sea Eagles</option>
+    <option value="teamstats.php?compid=1&round=5&code=NRL&game=2" >Rabbitohs vs Bulldogs</option>
+    <option value="teamstats.php?compid=1&round=5&code=NRL&game=3" >Panthers vs Storm</option>
+    <option value="teamstats.php?compid=1&round=5&code=NRL&game=4" SELECTED>Dragons vs Cowboys</option>
+  </select>
+`;
+
+describe('parseTeamStatsPage', () => {
+  it('extracts tipping ratio percentages', () => {
+    const result = parseTeamStatsPage(MOCK_TEAMSTATS_HTML);
+    expect(result).not.toBeNull();
+    expect(result!.homeTipPct).toBe(28);
+    expect(result!.awayTipPct).toBe(72);
+  });
+
+  it('extracts game listings from dropdown', () => {
+    const result = parseTeamStatsPage(MOCK_TEAMSTATS_HTML);
+    expect(result!.games).toHaveLength(4);
+    expect(result!.games[0]).toEqual({ gameNumber: 1, homeTeam: 'Dolphins', awayTeam: 'Sea Eagles' });
+    expect(result!.games[3]).toEqual({ gameNumber: 4, homeTeam: 'Dragons', awayTeam: 'Cowboys' });
+  });
+
+  it('returns null when tipping ratio is not found', () => {
+    const result = parseTeamStatsPage('<html><body>No stats here</body></html>');
+    expect(result).toBeNull();
   });
 });

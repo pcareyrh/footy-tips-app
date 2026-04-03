@@ -24,7 +24,7 @@ import { resolve } from 'path';
 // __dirname in vitest points to src/services/__tests/, so walk up 3 levels.
 config({ path: resolve(__dirname, '../../../.env'), override: true });
 
-import { login, fetchTippingPage, isConfigured } from '../itipfooty.js';
+import { login, fetchTippingPage, isConfigured, parseTeamStatsPage } from '../itipfooty.js';
 
 const KNOWN_TEAMS = new Set([
   'broncos', 'eels', 'warriors', 'raiders', 'roosters',
@@ -226,6 +226,67 @@ describeOrSkip('iTipFooty live smoke tests', () => {
 
       // Round should be numeric
       expect(Number(body.get('ROUND'))).toBeGreaterThan(0);
+    }, TIMEOUT);
+  });
+
+  // --------------------------------------------------------------------------
+  // 4. Team stats page — tipping ratio scrape (read-only)
+  // --------------------------------------------------------------------------
+  describe('team stats page', () => {
+    it('fetches and parses tipping ratio for game 1', async () => {
+      const tippingPage = await fetchTippingPage(sessionCookie);
+      const compId = process.env.ITIPFOOTY_COMP_ID!;
+
+      const url = `https://www.itipfooty.com.au/teamstats.php?compid=${compId}&round=${tippingPage.round}&code=NRL&game=1`;
+      const res = await fetch(url, {
+        headers: {
+          Cookie: sessionCookie,
+          'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+        },
+      });
+      expect(res.ok).toBe(true);
+
+      const parsed = parseTeamStatsPage(await res.text());
+      expect(parsed).not.toBeNull();
+
+      // Tipping ratio should be valid percentages
+      expect(parsed!.homeTipPct).toBeGreaterThanOrEqual(0);
+      expect(parsed!.homeTipPct).toBeLessThanOrEqual(100);
+      expect(parsed!.awayTipPct).toBeGreaterThanOrEqual(0);
+      expect(parsed!.awayTipPct).toBeLessThanOrEqual(100);
+      // They should approximately sum to 100 (may not be exact due to rounding)
+      expect(parsed!.homeTipPct + parsed!.awayTipPct).toBeGreaterThanOrEqual(99);
+      expect(parsed!.homeTipPct + parsed!.awayTipPct).toBeLessThanOrEqual(101);
+
+      console.log(`[team-stats] Game 1 tipping ratio: ${parsed!.homeTipPct}% vs ${parsed!.awayTipPct}%`);
+    }, TIMEOUT);
+
+    it('game dropdown lists all games with known team names', async () => {
+      const tippingPage = await fetchTippingPage(sessionCookie);
+      const compId = process.env.ITIPFOOTY_COMP_ID!;
+
+      const url = `https://www.itipfooty.com.au/teamstats.php?compid=${compId}&round=${tippingPage.round}&code=NRL&game=1`;
+      const res = await fetch(url, {
+        headers: {
+          Cookie: sessionCookie,
+          'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+        },
+      });
+      const parsed = parseTeamStatsPage(await res.text());
+      expect(parsed).not.toBeNull();
+      expect(parsed!.games.length).toBeGreaterThanOrEqual(4);
+
+      const unmapped: string[] = [];
+      for (const game of parsed!.games) {
+        if (!KNOWN_TEAMS.has(game.homeTeam.toLowerCase())) unmapped.push(game.homeTeam);
+        if (!KNOWN_TEAMS.has(game.awayTeam.toLowerCase())) unmapped.push(game.awayTeam);
+      }
+      expect(unmapped).toEqual([]);
+
+      console.log(`[team-stats] Round ${tippingPage.round} games:`);
+      for (const g of parsed!.games) {
+        console.log(`  Game ${g.gameNumber}: ${g.homeTeam} vs ${g.awayTeam}`);
+      }
     }, TIMEOUT);
   });
 });

@@ -7,6 +7,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import { predictRound } from './analysis.js';
+import type { ScrapeResult } from './nrl-api.js';
 
 const BASE_URL = 'https://www.itipfooty.com.au';
 const USER_AGENT =
@@ -511,4 +512,163 @@ export function isConfigured(): boolean {
     process.env.ITIPFOOTY_PASSWORD &&
     process.env.ITIPFOOTY_COMP_ID
   );
+}
+
+// ---------------------------------------------------------------------------
+// Team Stats scraper — extracts crowd tipping ratio from teamstats.php
+// ---------------------------------------------------------------------------
+
+interface ITipGameListing {
+  gameNumber: number;
+  homeTeam: string; // iTipFooty nickname, e.g. "Dragons"
+  awayTeam: string;
+}
+
+/**
+ * Parse the game dropdown from a teamstats page to get the game→team mapping
+ * for the entire round, plus extract the tipping ratio for the current game.
+ *
+ * Returns { games, homeTipPct, awayTipPct } or null if parsing fails.
+ */
+export function parseTeamStatsPage(html: string): {
+  games: ITipGameListing[];
+  homeTipPct: number;
+  awayTipPct: number;
+} | null {
+  // Extract tipping ratio: home% is in the first <td>, away% in the third
+  // around the "iTipFooty Tipping Ratio" label
+  const ratioMatch = html.match(
+    /<td><div[^>]*>(\d+)%<\/div><\/td>\s*<td><div[^>]*><span>iTipFooty Tipping Ratio<\/span><\/div><\/td>\s*<td><div[^>]*>(\d+)%<\/div><\/td>/
+  );
+  if (!ratioMatch) return null;
+
+  const homeTipPct = parseFloat(ratioMatch[1]);
+  const awayTipPct = parseFloat(ratioMatch[2]);
+
+  // Extract game dropdown options: value="teamstats.php?...&game=N" >HomeTeam vs AwayTeam</option>
+  const games: ITipGameListing[] = [];
+  const optionPattern = /game=(\d+)"[^>]*>([^<]+)\s+vs\s+([^<]+)<\/option>/g;
+  let match;
+  while ((match = optionPattern.exec(html)) !== null) {
+    games.push({
+      gameNumber: parseInt(match[1], 10),
+      homeTeam: match[2].trim(),
+      awayTeam: match[3].trim(),
+    });
+  }
+
+  return { games, homeTipPct, awayTipPct };
+}
+
+/**
+ * Scrape tipping ratios for all games in a round from iTipFooty team stats pages.
+ * Requires one HTTP request per game (8 games per round).
+ */
+export async function scrapeITipMatchStats(
+  prisma: PrismaClient,
+  roundNum: number,
+  season: string = '2026'
+): Promise<ScrapeResult> {
+  const errors: string[] = [];
+  let recordsAffected = 0;
+
+  try {
+    const { compId } = getCredentials();
+    const sessionCookie = await login();
+
+    // Fetch game 1 first to get the full game listing for the round
+    const firstUrl = `${BASE_URL}/teamstats.php?compid=${compId}&round=${roundNum}&code=NRL&game=1`;
+    const firstRes = await fetch(firstUrl, {
+      headers: { Cookie: sessionCookie, 'User-Agent': USER_AGENT },
+    });
+    if (!firstRes.ok) {
+      return { source: 'itipfooty', type: 'match-stats', recordsAffected: 0, errors: [`Failed to fetch teamstats page: ${firstRes.status}`], details: '' };
+    }
+
+    const firstHtml = await firstRes.text();
+    const firstParsed = parseTeamStatsPage(firstHtml);
+    if (!firstParsed || firstParsed.games.length === 0) {
+      return { source: 'itipfooty', type: 'match-stats', recordsAffected: 0, errors: ['Could not parse game listing from teamstats page'], details: '' };
+    }
+
+    const totalGames = firstParsed.games.length;
+    const roundId = `${season}-R${roundNum}`;
+
+    // Process game 1 result, then fetch games 2..N
+    const gameResults = new Map<number, { homeTipPct: number; awayTipPct: number }>();
+    gameResults.set(1, { homeTipPct: firstParsed.homeTipPct, awayTipPct: firstParsed.awayTipPct });
+
+    for (let g = 2; g <= totalGames; g++) {
+      await new Promise(r => setTimeout(r, 500)); // rate limit
+      try {
+        const url = `${BASE_URL}/teamstats.php?compid=${compId}&round=${roundNum}&code=NRL&game=${g}`;
+        const res = await fetch(url, {
+          headers: { Cookie: sessionCookie, 'User-Agent': USER_AGENT },
+        });
+        if (!res.ok) {
+          errors.push(`Game ${g}: HTTP ${res.status}`);
+          continue;
+        }
+        const parsed = parseTeamStatsPage(await res.text());
+        if (parsed) {
+          gameResults.set(g, { homeTipPct: parsed.homeTipPct, awayTipPct: parsed.awayTipPct });
+        } else {
+          errors.push(`Game ${g}: could not parse tipping ratio`);
+        }
+      } catch (err) {
+        errors.push(`Game ${g}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    // Match each game to a DB fixture and upsert
+    for (const gameListing of firstParsed.games) {
+      const ratio = gameResults.get(gameListing.gameNumber);
+      if (!ratio) continue;
+
+      const homeTeamId = ITIP_TO_TEAM_ID[gameListing.homeTeam.toLowerCase()];
+      const awayTeamId = ITIP_TO_TEAM_ID[gameListing.awayTeam.toLowerCase()];
+      if (!homeTeamId || !awayTeamId) {
+        errors.push(`Game ${gameListing.gameNumber}: unknown team "${gameListing.homeTeam}" or "${gameListing.awayTeam}"`);
+        continue;
+      }
+
+      const fixture = await prisma.fixture.findFirst({
+        where: { roundId, homeTeamId, awayTeamId },
+      });
+      if (!fixture) {
+        errors.push(`Game ${gameListing.gameNumber}: no fixture found for ${gameListing.homeTeam} vs ${gameListing.awayTeam}`);
+        continue;
+      }
+
+      const existing = await prisma.iTipMatchStat.findUnique({ where: { fixtureId: fixture.id } });
+      if (existing) {
+        await prisma.iTipMatchStat.update({
+          where: { id: existing.id },
+          data: { homeTipPct: ratio.homeTipPct, awayTipPct: ratio.awayTipPct },
+        });
+      } else {
+        await prisma.iTipMatchStat.create({
+          data: {
+            fixtureId: fixture.id,
+            season,
+            roundNumber: roundNum,
+            gameNumber: gameListing.gameNumber,
+            homeTipPct: ratio.homeTipPct,
+            awayTipPct: ratio.awayTipPct,
+          },
+        });
+      }
+      recordsAffected++;
+    }
+
+    const details = `Round ${roundNum}: scraped tipping ratios for ${recordsAffected}/${totalGames} games`;
+    console.log(`[iTipFooty] ${details}`);
+
+    return { source: 'itipfooty', type: 'match-stats', recordsAffected, errors, details };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errors.push(msg);
+    console.error('[iTipFooty] Match stats scrape error:', msg);
+    return { source: 'itipfooty', type: 'match-stats', recordsAffected, errors, details: '' };
+  }
 }
