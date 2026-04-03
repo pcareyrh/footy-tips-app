@@ -599,4 +599,54 @@ describe('submitTips()', () => {
       })
     );
   });
+
+  it('logs to DataSourceLog on failure', async () => {
+    // Login fails (non-302 response)
+    (fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        status: 401,
+        headers: { getSetCookie: () => [] },
+      });
+
+    const result = await submitTips(mockPrisma, 1);
+    expect(result.success).toBe(false);
+
+    expect(mockPrisma.dataSourceLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          source: 'itipfooty',
+          status: 'error',
+          recordsAffected: 0,
+        }),
+      })
+    );
+  });
+
+  it('logs to DataSourceLog when no tips to submit', async () => {
+    vi.mocked(predictRound).mockResolvedValueOnce([]);
+
+    // Use locked-only HTML so all games are locked and no tips can be submitted
+    (fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        status: 302,
+        headers: { getSetCookie: () => ['PHPSESSID=sess1; Path=/'] },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => MOCK_TIPPING_HTML_WITH_LOCKED,
+      });
+
+    const result = await submitTips(mockPrisma, 1);
+    expect(result.success).toBe(false);
+
+    expect(mockPrisma.dataSourceLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          source: 'itipfooty',
+          status: 'error',
+          message: expect.stringContaining('No tips to submit'),
+        }),
+      })
+    );
+  });
 });

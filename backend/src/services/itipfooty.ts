@@ -410,11 +410,20 @@ export async function submitTips(
     }
 
     if (tips.size === 0) {
+      const noTipsMsg = 'No tips to submit — all games locked or unmatched';
+      await prisma.dataSourceLog.create({
+        data: {
+          source: 'itipfooty',
+          status: 'error',
+          message: `Round ${actualRound}: ${noTipsMsg}`,
+          recordsAffected: 0,
+        },
+      });
       return {
         success: false,
         round: actualRound,
         tips: tipSubmissions,
-        message: 'No tips to submit — all games locked or unmatched',
+        message: noTipsMsg,
         errors,
       };
     }
@@ -469,6 +478,19 @@ export async function submitTips(
     const msg = err instanceof Error ? err.message : String(err);
     errors.push(msg);
     console.error('[iTipFooty] Error:', msg);
+
+    try {
+      await prisma.dataSourceLog.create({
+        data: {
+          source: 'itipfooty',
+          status: 'error',
+          message: `Failed to submit tips: ${msg}`,
+          recordsAffected: 0,
+        },
+      });
+    } catch (logErr) {
+      console.error('[iTipFooty] Failed to log error to DB:', logErr instanceof Error ? logErr.message : logErr);
+    }
 
     return {
       success: false,
