@@ -17,7 +17,7 @@ jobs:
       github.event_name == 'push'
 
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
@@ -25,6 +25,35 @@ jobs:
         with:
           # workflow_run sets github.sha to the workflow file's SHA, not the triggering commit
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/v* ]]; then
+            # Tag push — use the tag as-is
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "bump=false" >> "$GITHUB_OUTPUT"
+          else
+            # CI-triggered release — bump patch version from package.json
+            CURRENT=$(node -p "require('./package.json').version")
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+            NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))"
+            echo "tag=v${NEXT}" >> "$GITHUB_OUTPUT"
+            echo "next=${NEXT}" >> "$GITHUB_OUTPUT"
+            echo "bump=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump version in package.json
+        if: steps.version.outputs.bump == 'true'
+        run: |
+          npm version ${{ steps.version.outputs.next }} --no-git-tag-version
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "Release ${{ steps.version.outputs.tag }}"
+          git tag "${{ steps.version.outputs.tag }}"
+          git push origin HEAD:main --tags
 
       - uses: docker/login-action@v3
         with:
@@ -37,7 +66,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=ref,event=tag
+            type=raw,value=${{ steps.version.outputs.tag }}
             type=sha,prefix=,format=short
             type=raw,value=latest,enable={{is_default_branch}}
 
