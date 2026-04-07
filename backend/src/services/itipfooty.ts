@@ -47,6 +47,7 @@ interface ITipGame {
   homeTeamId: string; // our DB team ID
   awayTeamId: string;
   locked: boolean;
+  existingPick?: 'H' | 'A'; // pick value from hidden input (locked games with a prior submission)
 }
 
 interface ITipFormData {
@@ -199,10 +200,14 @@ export async function fetchTippingPage(
   // Team names are in <span id="longteamname"> elements adjacent to radio buttons
   const games: ITipGame[] = [];
 
-  // Match game patterns: radio button with H value, then find surrounding team names
+  // Match game patterns: radio button with H value, then find surrounding team names.
+  // Capture everything after name="N" up to the end of the tag so we can detect
+  // 'disabled' regardless of whether it appears before or after class="form-check-input".
   const gamePattern =
-    /id="(\d+)"\s+value="H"\s+type="radio"\s+name="\1"[^>]*class="form-check-input[^"]*"[^>]*(disabled)?/g;
-  // Also match hidden inputs for locked games: <input name="N" type="hidden" id="N" value="H">
+    /id="(\d+)"\s+value="H"\s+type="radio"\s+name="\1"([^>]*class="form-check-input[^"]*"[^>]*)/g;
+  // Also match hidden inputs for locked games: <input name="N" type="hidden" id="N" value="H|A">
+  // Captures the existing pick (H or A) so it can be re-sent in the submission body,
+  // preventing iTipFooty from clearing the locked-game pick when we resubmit.
   const hiddenGamePattern =
     /input\s+name="(\d+)"\s+type="hidden"\s+id="\1"\s+value="(H|A)"/g;
 
@@ -211,7 +216,9 @@ export async function fetchTippingPage(
   let match;
   while ((match = gamePattern.exec(html)) !== null) {
     const gameNum = parseInt(match[1], 10);
-    const locked = !!match[2];
+    // Check for 'disabled' anywhere in the full matched tag content (handles both
+    // disabled-before-class and disabled-after-class attribute orderings).
+    const locked = /\bdisabled\b/.test(match[0]);
     gameNumbers.add(gameNum);
     games.push({
       gameNumber: gameNum,
@@ -223,9 +230,11 @@ export async function fetchTippingPage(
     });
   }
 
-  // Also find locked (hidden input) games
+  // Also find locked (hidden input) games. Store the existing pick value so it can
+  // be preserved in the POST body — without it iTipFooty may clear the pick on resubmit.
   while ((match = hiddenGamePattern.exec(html)) !== null) {
     const gameNum = parseInt(match[1], 10);
+    const existingPick = match[2] as 'H' | 'A';
     if (!gameNumbers.has(gameNum)) {
       gameNumbers.add(gameNum);
       games.push({
@@ -235,6 +244,7 @@ export async function fetchTippingPage(
         homeTeamId: '',
         awayTeamId: '',
         locked: true,
+        existingPick,
       });
     }
   }
@@ -297,6 +307,16 @@ export async function submitTipsToSite(
     tipref: formData.tipRef,
   });
 
+  // Include existing picks for locked games so iTipFooty preserves them.
+  // A real browser form submission includes hidden inputs for locked games; without
+  // these values in the body iTipFooty will clear the locked-game picks on save.
+  for (const game of formData.games) {
+    if (game.locked && game.existingPick) {
+      body.set(String(game.gameNumber), game.existingPick);
+    }
+  }
+
+  // New picks for unlocked games (may overwrite if the same game somehow appears above)
   for (const [gameNum, pick] of tips) {
     body.set(String(gameNum), pick);
   }

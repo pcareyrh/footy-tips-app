@@ -37,6 +37,35 @@ const MOCK_TIPPING_HTML_WITH_LOCKED = `
   <span id="longteamname"><strong>Panthers</strong></span>
 `;
 
+// Round with one locked game (prior pick = A) and one unlocked game.
+// The locked game uses a hidden input; the unlocked game has a radio button
+// where 'disabled' appears *before* class= to exercise the fixed detection.
+const MOCK_TIPPING_HTML_MIXED = `
+  <input name="postmemberid" value="99999">
+  <input name="tipref" value="88888">
+  <input name="JOKERCOUNT" value="1">
+  <input name="CURRENTJOKERCOUNT" value="0">
+  var marginincluded = "NO"
+  <input name="1" type="hidden" id="1" value="A">
+  <span id="longteamname"><strong>Broncos</strong></span>
+  <span id="longteamname"><strong>Roosters</strong></span>
+  <input id="2" value="H" type="radio" name="2" class="form-check-input">
+  <span id="longteamname"><strong>Storm</strong></span>
+  <span id="longteamname"><strong>Panthers</strong></span>
+`;
+
+// Locked game where 'disabled' appears before class= (tests the fixed gamePattern)
+const MOCK_TIPPING_HTML_DISABLED_BEFORE_CLASS = `
+  <input name="postmemberid" value="99999">
+  <input name="tipref" value="88888">
+  <input name="JOKERCOUNT" value="1">
+  <input name="CURRENTJOKERCOUNT" value="0">
+  var marginincluded = "NO"
+  <input id="1" value="H" type="radio" name="1" disabled class="form-check-input">
+  <span id="longteamname"><strong>Storm</strong></span>
+  <span id="longteamname"><strong>Panthers</strong></span>
+`;
+
 // ---------------------------------------------------------------------------
 // isConfigured
 // ---------------------------------------------------------------------------
@@ -196,6 +225,44 @@ describe('fetchTippingPage()', () => {
     expect(locked[0].locked).toBe(true);
   });
 
+  it('stores existingPick from hidden input on locked games', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      text: async () => MOCK_TIPPING_HTML_WITH_LOCKED,
+    });
+    const result = await fetchTippingPage(MOCK_SESSION, 1);
+    const locked = result.games.find(g => g.locked)!;
+    expect(locked.existingPick).toBe('H');
+  });
+
+  it('detects locked=true when disabled appears before class', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      text: async () => MOCK_TIPPING_HTML_DISABLED_BEFORE_CLASS,
+    });
+    const result = await fetchTippingPage(MOCK_SESSION, 1);
+    expect(result.games).toHaveLength(1);
+    expect(result.games[0].locked).toBe(true);
+  });
+
+  it('parses mixed round with one locked (hidden) and one unlocked game', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      text: async () => MOCK_TIPPING_HTML_MIXED,
+    });
+    const result = await fetchTippingPage(MOCK_SESSION, 1);
+    expect(result.games).toHaveLength(2);
+    const locked = result.games.find(g => g.gameNumber === 1)!;
+    const unlocked = result.games.find(g => g.gameNumber === 2)!;
+    expect(locked.locked).toBe(true);
+    expect(locked.existingPick).toBe('A');
+    expect(locked.homeTeamId).toBe('BRI');
+    expect(locked.awayTeamId).toBe('SYD');
+    expect(unlocked.locked).toBe(false);
+    expect(unlocked.homeTeamId).toBe('MEL');
+    expect(unlocked.awayTeamId).toBe('PEN');
+  });
+
   it('maps "Storm" to MEL and "Panthers" to PEN', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
@@ -309,6 +376,41 @@ describe('submitTipsToSite()', () => {
     const [, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
     const headers = opts.headers as Record<string, string>;
     expect(headers['Cookie']).toBe(MOCK_SESSION);
+  });
+
+  it('includes existingPick for locked games in POST body to preserve them on iTipFooty', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ status: 302 });
+    const formDataWithLocked = {
+      ...mockFormData,
+      games: [
+        { gameNumber: 1, homeTeam: 'Broncos', awayTeam: 'Roosters', homeTeamId: 'BRI', awayTeamId: 'SYD', locked: true, existingPick: 'A' as const },
+        { gameNumber: 2, homeTeam: 'Storm', awayTeam: 'Panthers', homeTeamId: 'MEL', awayTeamId: 'PEN', locked: false },
+      ],
+    };
+    const tips = new Map<number, 'H' | 'A'>([[2, 'H']]);
+    await submitTipsToSite(MOCK_SESSION, formDataWithLocked, tips);
+    const [, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    const body = opts.body as string;
+    // Locked game 1's existing pick must be preserved
+    expect(body).toContain('1=A');
+    // Unlocked game 2's new pick must be included
+    expect(body).toContain('2=H');
+  });
+
+  it('does not include locked games without an existingPick in POST body', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ status: 302 });
+    const formDataNoExisting = {
+      ...mockFormData,
+      games: [
+        { gameNumber: 1, homeTeam: 'Broncos', awayTeam: 'Roosters', homeTeamId: 'BRI', awayTeamId: 'SYD', locked: true },
+      ],
+    };
+    const tips = new Map<number, 'H' | 'A'>();
+    await submitTipsToSite(MOCK_SESSION, formDataNoExisting, tips);
+    const [, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    const body = opts.body as string;
+    expect(body).not.toContain('1=H');
+    expect(body).not.toContain('1=A');
   });
 });
 
