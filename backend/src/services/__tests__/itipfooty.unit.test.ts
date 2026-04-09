@@ -11,12 +11,13 @@ import { predictRound } from '../analysis.js';
 
 const MOCK_SESSION = 'PHPSESSID=abc123xyz';
 
-// Minimal HTML that satisfies the itipfooty parser
+// Minimal HTML that satisfies the itipfooty parser.
+// Note: tipref was removed from iTipFooty's form in 2026 — it is no longer required.
 const MOCK_TIPPING_HTML = `
-  <input name="postmemberid" value="99999">
-  <input name="tipref" value="88888">
-  <input name="JOKERCOUNT" value="1">
-  <input name="CURRENTJOKERCOUNT" value="0">
+  <input name="postmemberid" type="hidden" value="99999">
+  <input name="JOKERCOUNT" type="hidden" value="1">
+  <input name="CURRENTJOKERCOUNT" type="hidden" value="0">
+  <input name="todo" type="hidden" value="add">
   var marginincluded = "NO"
   <input id="1" value="H" type="radio" name="1" class="form-check-input">
   <span id="longteamname"><strong>Storm</strong></span>
@@ -27,10 +28,10 @@ const MOCK_TIPPING_HTML = `
 `;
 
 const MOCK_TIPPING_HTML_WITH_LOCKED = `
-  <input name="postmemberid" value="99999">
-  <input name="tipref" value="88888">
-  <input name="JOKERCOUNT" value="1">
-  <input name="CURRENTJOKERCOUNT" value="0">
+  <input name="postmemberid" type="hidden" value="99999">
+  <input name="JOKERCOUNT" type="hidden" value="1">
+  <input name="CURRENTJOKERCOUNT" type="hidden" value="0">
+  <input name="todo" type="hidden" value="add">
   var marginincluded = "YES"
   <input name="3" type="hidden" id="3" value="H">
   <span id="longteamname"><strong>Storm</strong></span>
@@ -41,10 +42,10 @@ const MOCK_TIPPING_HTML_WITH_LOCKED = `
 // The locked game uses a hidden input; the unlocked game has a radio button
 // where 'disabled' appears *before* class= to exercise the fixed detection.
 const MOCK_TIPPING_HTML_MIXED = `
-  <input name="postmemberid" value="99999">
-  <input name="tipref" value="88888">
-  <input name="JOKERCOUNT" value="1">
-  <input name="CURRENTJOKERCOUNT" value="0">
+  <input name="postmemberid" type="hidden" value="99999">
+  <input name="JOKERCOUNT" type="hidden" value="1">
+  <input name="CURRENTJOKERCOUNT" type="hidden" value="0">
+  <input name="todo" type="hidden" value="add">
   var marginincluded = "NO"
   <input name="1" type="hidden" id="1" value="A">
   <span id="longteamname"><strong>Broncos</strong></span>
@@ -56,10 +57,10 @@ const MOCK_TIPPING_HTML_MIXED = `
 
 // Locked game where 'disabled' appears before class= (tests the fixed gamePattern)
 const MOCK_TIPPING_HTML_DISABLED_BEFORE_CLASS = `
-  <input name="postmemberid" value="99999">
-  <input name="tipref" value="88888">
-  <input name="JOKERCOUNT" value="1">
-  <input name="CURRENTJOKERCOUNT" value="0">
+  <input name="postmemberid" type="hidden" value="99999">
+  <input name="JOKERCOUNT" type="hidden" value="1">
+  <input name="CURRENTJOKERCOUNT" type="hidden" value="0">
+  <input name="todo" type="hidden" value="add">
   var marginincluded = "NO"
   <input id="1" value="H" type="radio" name="1" disabled class="form-check-input">
   <span id="longteamname"><strong>Storm</strong></span>
@@ -166,7 +167,7 @@ describe('fetchTippingPage()', () => {
     await expect(fetchTippingPage(MOCK_SESSION, 1)).rejects.toThrow('Failed to fetch tipping page: 403');
   });
 
-  it('throws when postMemberId or tipRef cannot be parsed', async () => {
+  it('throws when postMemberId cannot be parsed', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
       text: async () => '<html>no form fields here</html>',
@@ -174,14 +175,15 @@ describe('fetchTippingPage()', () => {
     await expect(fetchTippingPage(MOCK_SESSION, 1)).rejects.toThrow('Could not parse tipping form fields');
   });
 
-  it('parses postMemberId and tipRef correctly', async () => {
+  it('parses postMemberId correctly (tipRef is optional)', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
       text: async () => MOCK_TIPPING_HTML,
     });
     const result = await fetchTippingPage(MOCK_SESSION, 1);
     expect(result.postMemberId).toBe('99999');
-    expect(result.tipRef).toBe('88888');
+    expect(result.tipRef).toBe('');
+    expect(result.todoAction).toBe('add');
     expect(result.jokerCount).toBe('1');
     expect(result.currentJokerCount).toBe('0');
   });
@@ -322,7 +324,8 @@ describe('submitTipsToSite()', () => {
 
   const mockFormData = {
     postMemberId: '99999',
-    tipRef: '88888',
+    tipRef: '',
+    todoAction: 'add',
     jokerCount: '1',
     currentJokerCount: '0',
     games: [],

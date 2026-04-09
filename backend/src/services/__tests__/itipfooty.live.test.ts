@@ -71,9 +71,8 @@ describeOrSkip('iTipFooty live smoke tests', () => {
     it('fetches and parses the current round page', async () => {
       const formData = await fetchTippingPage(sessionCookie);
 
-      // Form fields must be populated
+      // Form fields must be populated (tipRef was removed from iTipFooty in 2026)
       expect(formData.postMemberId).toBeTruthy();
-      expect(formData.tipRef).toBeTruthy();
 
       // Round should be a positive integer
       expect(formData.round).toBeGreaterThan(0);
@@ -214,8 +213,8 @@ describeOrSkip('iTipFooty live smoke tests', () => {
         body.set(String(game.gameNumber), 'H');
       }
 
-      // Verify all required keys are present and non-empty
-      for (const key of ['postmemberid', 'COMPID', 'ROUND', 'tipref', 'todo']) {
+      // Verify all required keys are present and non-empty (tipref removed from iTipFooty in 2026)
+      for (const key of ['postmemberid', 'COMPID', 'ROUND', 'todo']) {
         expect(body.get(key)).toBeTruthy();
       }
 

@@ -65,6 +65,7 @@ interface ITipGame {
 interface ITipFormData {
   postMemberId: string;
   tipRef: string;
+  todoAction: string;
   jokerCount: string;
   currentJokerCount: string;
   games: ITipGame[];
@@ -191,19 +192,27 @@ export async function fetchTippingPage(
     }
   }
 
-  // Extract hidden form fields
-  const postMemberId =
-    html.match(/name="postmemberid"[^>]*value="(\d+)"/)?.[1] ?? '';
-  const tipRef =
-    html.match(/name="tipref"[^>]*value="(\d+)"/)?.[1] ?? '';
-  const jokerCount =
-    html.match(/name="JOKERCOUNT"[^>]*value="(\d+)"/)?.[1] ?? '0';
-  const currentJokerCount =
-    html.match(/name="CURRENTJOKERCOUNT"[^>]*value="(\d+)"/)?.[1] ?? '0';
+  // Extract hidden form fields.
+  // Attribute order varies across iTipFooty releases, so match name and value
+  // independently within the same <input> tag.
+  function extractHiddenField(fieldName: string): string {
+    // Try name before value
+    const m1 = html.match(new RegExp(`name="${fieldName}"[^>]*value="([^"]*)"`));
+    if (m1) return m1[1];
+    // Try value before name
+    const m2 = html.match(new RegExp(`value="([^"]*)"[^>]*name="${fieldName}"`));
+    return m2?.[1] ?? '';
+  }
+
+  const postMemberId = extractHiddenField('postmemberid');
+  const tipRef = extractHiddenField('tipref');
+  const todoAction = extractHiddenField('todo') || 'add';
+  const jokerCount = extractHiddenField('JOKERCOUNT') || '0';
+  const currentJokerCount = extractHiddenField('CURRENTJOKERCOUNT') || '0';
   const marginIncluded =
     (html.match(/var marginincluded\s*=\s*"(\w+)"/)?.[1] ?? 'NO') === 'YES';
 
-  if (!postMemberId || !tipRef) {
+  if (!postMemberId) {
     throw new Error('Could not parse tipping form fields from page');
   }
 
@@ -289,6 +298,7 @@ export async function fetchTippingPage(
   return {
     postMemberId,
     tipRef,
+    todoAction,
     jokerCount,
     currentJokerCount,
     games,
@@ -315,9 +325,11 @@ export async function submitTipsToSite(
     ROUND: String(formData.round),
     JOKERCOUNT: formData.jokerCount,
     CURRENTJOKERCOUNT: formData.currentJokerCount,
-    todo: 'update',
-    tipref: formData.tipRef,
+    todo: formData.todoAction,
   });
+  if (formData.tipRef) {
+    body.set('tipref', formData.tipRef);
+  }
 
   // Include existing picks for locked games so iTipFooty preserves them.
   // A real browser form submission includes hidden inputs for locked games; without

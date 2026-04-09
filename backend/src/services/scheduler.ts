@@ -2,8 +2,8 @@
  * Scheduler — auto-submits iTipFooty tips before each round.
  *
  * Two trigger types per round:
- *  1. ROUND SUBMIT   — 1 hour before the first game kicks off: submit all tips.
- *  2. PRE-GAME SCRAPE — 1 hour before each subsequent game: rescrape + resubmit
+ *  1. ROUND SUBMIT   — 40 minutes before the first game kicks off: submit all tips.
+ *  2. PRE-GAME SCRAPE — 40 minutes before each subsequent game: rescrape + resubmit
  *     so any last-minute prediction changes (injuries, odds shift) are captured.
  *
  * Rules:
@@ -98,10 +98,10 @@ export async function tick(prisma: PrismaClient): Promise<void> {
   if (!isConfigured()) return;
 
   const now = new Date();
-  const windowStart = new Date(now.getTime() + 55 * 60_000); // 55 min from now
-  const windowEnd   = new Date(now.getTime() + 65 * 60_000); // 65 min from now
+  const windowStart = new Date(now.getTime() + 35 * 60_000); // 35 min from now
+  const windowEnd   = new Date(now.getTime() + 45 * 60_000); // 45 min from now
 
-  // Find upcoming fixtures whose kickoff falls inside the ±5-min window around T-1h
+  // Find upcoming fixtures whose kickoff falls inside the ±5-min window around T-40min
   const inWindow = await prisma.fixture.findMany({
     where: {
       kickoff: { gte: windowStart, lte: windowEnd },
@@ -157,7 +157,7 @@ export async function handleRoundSubmit(prisma: PrismaClient, roundNum: number):
     return;
   }
 
-  console.log(`[scheduler] Auto-submitting Round ${roundNum} tips (T-1h before first game)…`);
+  console.log(`[scheduler] Auto-submitting Round ${roundNum} tips (T-40min before first game)…`);
 
   try {
     await scrapeCurrentRound(prisma);
