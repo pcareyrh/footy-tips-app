@@ -85,7 +85,8 @@ export function updateScrapeSchedule(scheduleKey: string): void {
 // Core polling tick — runs every minute
 // ---------------------------------------------------------------------------
 
-async function tick(prisma: PrismaClient): Promise<void> {
+// Exported for testing
+export async function tick(prisma: PrismaClient): Promise<void> {
   if (!isConfigured()) return;
 
   const now = new Date();
@@ -127,7 +128,8 @@ async function tick(prisma: PrismaClient): Promise<void> {
 // Round-level submit — fires 1h before first game
 // ---------------------------------------------------------------------------
 
-async function handleRoundSubmit(prisma: PrismaClient, roundNum: number): Promise<void> {
+// Exported for testing
+export async function handleRoundSubmit(prisma: PrismaClient, roundNum: number): Promise<void> {
   // Skip if a successful submission for this round already happened in the last 30 min
   // (covers both manual UI submissions and previous auto runs)
   const recent = await prisma.dataSourceLog.findFirst({
@@ -148,6 +150,20 @@ async function handleRoundSubmit(prisma: PrismaClient, roundNum: number): Promis
   }
 
   console.log(`[scheduler] Auto-submitting Round ${roundNum} tips (T-1h before first game)…`);
+
+  try {
+    await scrapeCurrentRound(prisma);
+  } catch (err) {
+    console.error('[scheduler] Pre-submit scrape failed:', err instanceof Error ? err.message : err);
+    // Continue — use stale data rather than skip submission entirely
+  }
+
+  try {
+    await scrapeITipMatchStats(prisma, roundNum);
+  } catch (err) {
+    console.error('[scheduler] Pre-submit iTipFooty match stats scrape failed:', err instanceof Error ? err.message : err);
+  }
+
   const overrides = await loadOverrides(prisma);
   const result = await submitTips(prisma, roundNum, overrides);
 
@@ -167,7 +183,8 @@ async function handleRoundSubmit(prisma: PrismaClient, roundNum: number): Promis
 // Pre-game rescrape — fires 1h before each subsequent game
 // ---------------------------------------------------------------------------
 
-async function handlePreGameRescrape(prisma: PrismaClient, roundNum: number): Promise<void> {
+// Exported for testing
+export async function handlePreGameRescrape(prisma: PrismaClient, roundNum: number): Promise<void> {
   console.log(`[scheduler] Pre-game scrape + resubmit for Round ${roundNum}…`);
 
   try {

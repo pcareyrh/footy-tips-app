@@ -426,8 +426,8 @@ describe('submitTips()', () => {
   } as unknown as PrismaClient;
 
   beforeEach(() => {
+    vi.resetAllMocks();
     vi.stubGlobal('fetch', vi.fn());
-    vi.clearAllMocks();
   });
 
   afterEach(() => {
@@ -700,6 +700,71 @@ describe('submitTips()', () => {
         }),
       })
     );
+  });
+
+  it('includes "run the scraper" hint in errors when no prediction found for a game', async () => {
+    vi.mocked(predictRound).mockResolvedValueOnce([]);
+
+    (fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        status: 302,
+        headers: { getSetCookie: () => ['PHPSESSID=sess1; Path=/'] },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => MOCK_TIPPING_HTML,
+      });
+
+    const result = await submitTips(mockPrisma, 1);
+    expect(result.success).toBe(false);
+    // Each unmatched game should have an actionable error with scraper hint
+    const scraperErrors = result.errors.filter(e => e.includes('run the scraper'));
+    expect(scraperErrors.length).toBeGreaterThanOrEqual(1);
+    // One error per unlocked game (MOCK_TIPPING_HTML has 2 unlocked games)
+    expect(scraperErrors.length).toBe(2);
+  });
+
+  it('returns errors listing each unmatched game when predictions are empty', async () => {
+    vi.mocked(predictRound).mockResolvedValueOnce([]);
+
+    (fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        status: 302,
+        headers: { getSetCookie: () => ['PHPSESSID=sess1; Path=/'] },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => MOCK_TIPPING_HTML,
+      });
+
+    const result = await submitTips(mockPrisma, 6);
+    expect(result.success).toBe(false);
+    expect(result.round).toBe(6);
+    // Each game should appear in errors by name
+    const stormError = result.errors.find(e => e.includes('Storm') || e.includes('Panthers'));
+    expect(stormError).toBeTruthy();
+  });
+
+  it('returns success:false when predictRound throws (DB unavailable)', async () => {
+    vi.mocked(predictRound).mockRejectedValueOnce(new Error('DB connection failed'));
+
+    (mockPrisma.fixture.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      round: { number: 6 },
+    });
+
+    (fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        status: 302,
+        headers: { getSetCookie: () => ['PHPSESSID=sess1; Path=/'] },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => MOCK_TIPPING_HTML,
+      });
+
+    const result = await submitTips(mockPrisma, 6);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('DB connection failed');
   });
 
   it('logs to DataSourceLog on failure', async () => {
