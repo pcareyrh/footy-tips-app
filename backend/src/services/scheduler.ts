@@ -22,6 +22,7 @@ import { scrapeCurrentRound, scrapeAll } from './scraper.js';
 let task: cron.ScheduledTask | null = null;
 let scrapeTask: cron.ScheduledTask | null = null;
 let _prisma: PrismaClient | null = null;
+let tickRunning = false;
 
 export const SCRAPE_SCHEDULE_KEY = 'scrape_schedule';
 
@@ -38,9 +39,16 @@ export function startScheduler(prisma: PrismaClient): void {
   if (task) return;
 
   task = cron.schedule('* * * * *', () => {
-    tick(prisma).catch((err) =>
-      console.error('[scheduler] Unhandled error:', err instanceof Error ? err.message : err)
-    );
+    if (tickRunning) {
+      console.warn('[scheduler] Previous tick still running — skipping this minute');
+      return;
+    }
+    tickRunning = true;
+    tick(prisma)
+      .catch((err) =>
+        console.error('[scheduler] Unhandled error:', err instanceof Error ? err.message : err)
+      )
+      .finally(() => { tickRunning = false; });
   });
 
   const status = isConfigured() ? 'active — will auto-submit tips' : 'iTipFooty not configured, submissions disabled';

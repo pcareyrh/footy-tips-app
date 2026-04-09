@@ -13,6 +13,18 @@ const BASE_URL = 'https://www.itipfooty.com.au';
 const USER_AGENT =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
+// Per-request timeout for all iTipFooty HTTP calls (ms).
+// itipfooty.com.au is a small shared-hosting PHP site; 10 s is generous.
+const REQUEST_TIMEOUT_MS = 10_000;
+
+function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() =>
+    clearTimeout(timer)
+  );
+}
+
 // Map our DB team IDs → iTipFooty nicknames (used to match games)
 const TEAM_ID_TO_ITIP: Record<string, string> = {
   BRI: 'Broncos',
@@ -109,7 +121,7 @@ export async function login(): Promise<string> {
     password: password,
   });
 
-  const res = await fetch(`${BASE_URL}/services/login.php`, {
+  const res = await fetchWithTimeout(`${BASE_URL}/services/login.php`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -152,7 +164,7 @@ export async function fetchTippingPage(
     ? `${BASE_URL}/tipping.php?compid=${compId}&round=${round}`
     : `${BASE_URL}/tipping.php?compid=${compId}`;
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: {
       Cookie: sessionCookie,
       'User-Agent': USER_AGENT,
@@ -321,7 +333,7 @@ export async function submitTipsToSite(
     body.set(String(gameNum), pick);
   }
 
-  const res = await fetch(`${BASE_URL}/services/SubmitTips.php`, {
+  const res = await fetchWithTimeout(`${BASE_URL}/services/SubmitTips.php`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -598,7 +610,7 @@ export async function scrapeITipMatchStats(
 
     // Fetch game 1 first to get the full game listing for the round
     const firstUrl = `${BASE_URL}/teamstats.php?compid=${compId}&round=${roundNum}&code=NRL&game=1`;
-    const firstRes = await fetch(firstUrl, {
+    const firstRes = await fetchWithTimeout(firstUrl, {
       headers: { Cookie: sessionCookie, 'User-Agent': USER_AGENT },
     });
     if (!firstRes.ok) {
@@ -622,7 +634,7 @@ export async function scrapeITipMatchStats(
       await new Promise(r => setTimeout(r, 500)); // rate limit
       try {
         const url = `${BASE_URL}/teamstats.php?compid=${compId}&round=${roundNum}&code=NRL&game=${g}`;
-        const res = await fetch(url, {
+        const res = await fetchWithTimeout(url, {
           headers: { Cookie: sessionCookie, 'User-Agent': USER_AGENT },
         });
         if (!res.ok) {
