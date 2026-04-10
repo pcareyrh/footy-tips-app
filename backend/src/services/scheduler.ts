@@ -1,17 +1,16 @@
 /**
- * Scheduler — auto-submits iTipFooty tips before each round.
+ * Scheduler — auto-submits iTipFooty tips once per round.
  *
- * Two trigger types per round:
- *  1. ROUND SUBMIT   — 40 minutes before the first game kicks off: submit all tips.
- *  2. PRE-GAME SCRAPE — 40 minutes before each subsequent game: rescrape + resubmit
- *     so any last-minute prediction changes (injuries, odds shift) are captured.
+ * A single trigger per round: 40 minutes before the first game kicks off,
+ * scrape current data and submit all tips. There is no per-game resubmission —
+ * resubmits after the first kickoff risk clearing already-locked picks on the
+ * iTipFooty side, so we make a single pass and leave the round alone.
  *
  * Rules:
  *  - DB-stored TipOverrides are always respected; overridden games are never
  *    recalculated.
- *  - If a round has already been submitted in the last 30 minutes, the round-
- *    level trigger is skipped silently.
- *  - Per-game triggers always fire (iTipFooty ignores picks for locked games).
+ *  - If a round has already been submitted in the last 30 minutes, the trigger
+ *    is skipped silently (de-dupes catch-up runs after a restart).
  */
 
 import * as cron from 'node-cron';
@@ -113,8 +112,13 @@ export async function tick(prisma: PrismaClient): Promise<void> {
 
   if (inWindow.length === 0) return;
 
+  // Only fire for fixtures that are the first kickoff in their round. Subsequent
+  // games in the same round are intentionally ignored — handleRoundSubmit's own
+  // 30-min de-dupe also makes accidental double-fires harmless.
+  const handledRounds = new Set<number>();
   for (const fixture of inWindow) {
-    // Is this the first (earliest) kickoff in the round?
+    if (handledRounds.has(fixture.round.number)) continue;
+
     const firstInRound = await prisma.fixture.findFirst({
       where: {
         roundId: fixture.roundId,
@@ -124,11 +128,10 @@ export async function tick(prisma: PrismaClient): Promise<void> {
       orderBy: { kickoff: 'asc' },
     });
 
-    if (firstInRound?.id === fixture.id) {
-      await handleRoundSubmit(prisma, fixture.round.number);
-    } else {
-      await handlePreGameRescrape(prisma, fixture.round.number);
-    }
+    if (firstInRound?.id !== fixture.id) continue;
+
+    handledRounds.add(fixture.round.number);
+    await handleRoundSubmit(prisma, fixture.round.number);
   }
 }
 
@@ -185,42 +188,6 @@ export async function handleRoundSubmit(prisma: PrismaClient, roundNum: number):
   });
 
   console.log(`[scheduler] Round ${roundNum} auto-submit: ${result.message}`);
-}
-
-// ---------------------------------------------------------------------------
-// Pre-game rescrape — fires 1h before each subsequent game
-// ---------------------------------------------------------------------------
-
-// Exported for testing
-export async function handlePreGameRescrape(prisma: PrismaClient, roundNum: number): Promise<void> {
-  console.log(`[scheduler] Pre-game scrape + resubmit for Round ${roundNum}…`);
-
-  try {
-    await scrapeCurrentRound(prisma);
-  } catch (err) {
-    console.error('[scheduler] Scrape failed:', err instanceof Error ? err.message : err);
-    // Continue — use stale data rather than skip submission entirely
-  }
-
-  try {
-    await scrapeITipMatchStats(prisma, roundNum);
-  } catch (err) {
-    console.error('[scheduler] iTipFooty match stats scrape failed:', err instanceof Error ? err.message : err);
-  }
-
-  const overrides = await loadOverrides(prisma);
-  const result = await submitTips(prisma, roundNum, overrides);
-
-  await prisma.dataSourceLog.create({
-    data: {
-      source: 'itipfooty-auto',
-      status: result.success ? (result.errors.length > 0 ? 'partial' : 'success') : 'error',
-      message: `[Auto pre-game] ${result.message}`,
-      recordsAffected: result.tips.length,
-    },
-  });
-
-  console.log(`[scheduler] Pre-game resubmit: ${result.message}`);
 }
 
 // ---------------------------------------------------------------------------

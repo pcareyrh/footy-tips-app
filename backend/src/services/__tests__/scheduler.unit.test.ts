@@ -24,7 +24,7 @@ vi.mock('../scraper.js', () => ({
   scrapeAll: vi.fn(),
 }));
 
-import { handleRoundSubmit, handlePreGameRescrape, tick } from '../scheduler.js';
+import { handleRoundSubmit, tick } from '../scheduler.js';
 import { submitTips, scrapeITipMatchStats, isConfigured } from '../itipfooty.js';
 import { scrapeCurrentRound } from '../scraper.js';
 
@@ -202,57 +202,6 @@ describe('handleRoundSubmit()', () => {
 });
 
 // ---------------------------------------------------------------------------
-// handlePreGameRescrape
-// ---------------------------------------------------------------------------
-
-describe('handlePreGameRescrape()', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    vi.mocked(isConfigured).mockReturnValue(true);
-  });
-
-  it('calls scrapeCurrentRound before submitTips', async () => {
-    const prisma = makeMockPrisma();
-
-    const callOrder: string[] = [];
-    vi.mocked(scrapeCurrentRound).mockImplementationOnce(async () => { callOrder.push('scrape'); });
-    vi.mocked(submitTips).mockImplementationOnce(async () => { callOrder.push('submit'); return SUBMIT_RESULT_SUCCESS; });
-
-    await handlePreGameRescrape(prisma, 6);
-
-    expect(callOrder[0]).toBe('scrape');
-    expect(callOrder).toContain('submit');
-  });
-
-  it('still submits even when scrape throws', async () => {
-    const prisma = makeMockPrisma();
-    vi.mocked(scrapeCurrentRound).mockRejectedValueOnce(new Error('timeout'));
-    vi.mocked(submitTips).mockResolvedValueOnce(SUBMIT_RESULT_SUCCESS);
-
-    await handlePreGameRescrape(prisma, 6);
-
-    expect(submitTips).toHaveBeenCalledOnce();
-  });
-
-  it('logs submission result to DataSourceLog with [Auto pre-game] prefix', async () => {
-    const prisma = makeMockPrisma();
-    vi.mocked(scrapeCurrentRound).mockResolvedValueOnce(undefined as never);
-    vi.mocked(submitTips).mockResolvedValueOnce(SUBMIT_RESULT_SUCCESS);
-
-    await handlePreGameRescrape(prisma, 6);
-
-    expect(prisma.dataSourceLog.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          source: 'itipfooty-auto',
-          message: expect.stringContaining('[Auto pre-game]'),
-        }),
-      })
-    );
-  });
-});
-
-// ---------------------------------------------------------------------------
 // tick() — scheduler polling core
 // ---------------------------------------------------------------------------
 
@@ -290,7 +239,7 @@ describe('tick()', () => {
     expect(submitTips).toHaveBeenCalledOnce();
   });
 
-  it('calls handlePreGameRescrape for subsequent games in a round', async () => {
+  it('skips fixtures that are not the first kickoff in their round', async () => {
     const kickoff = new Date(Date.now() + 60 * 60_000);
     const fixture = { id: 'fix-2', roundId: 'r-6', kickoff, status: 'upcoming', round: { number: 6 } };
     const firstFixture = { id: 'fix-1', roundId: 'r-6', kickoff: new Date(kickoff.getTime() - 2 * 3600_000), status: 'upcoming' };
@@ -300,20 +249,12 @@ describe('tick()', () => {
       firstInRound: firstFixture, // different from fixture = NOT the first in round
     });
 
-    vi.mocked(scrapeCurrentRound).mockResolvedValueOnce(undefined as never);
-    vi.mocked(submitTips).mockResolvedValueOnce(SUBMIT_RESULT_SUCCESS);
-
     await tick(prisma);
 
-    expect(scrapeCurrentRound).toHaveBeenCalledOnce();
-    expect(submitTips).toHaveBeenCalledOnce();
-    // DataSourceLog message should contain pre-game prefix
-    expect(prisma.dataSourceLog.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          message: expect.stringContaining('[Auto pre-game]'),
-        }),
-      })
-    );
+    // No submission should happen for non-first games — pre-game resubmits were
+    // removed because they risked clearing locked picks on iTipFooty.
+    expect(scrapeCurrentRound).not.toHaveBeenCalled();
+    expect(submitTips).not.toHaveBeenCalled();
+    expect(prisma.dataSourceLog.create).not.toHaveBeenCalled();
   });
 });

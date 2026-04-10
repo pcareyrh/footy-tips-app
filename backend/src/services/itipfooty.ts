@@ -226,13 +226,18 @@ export async function fetchTippingPage(
   // 'disabled' regardless of whether it appears before or after class="form-check-input".
   const gamePattern =
     /id="(\d+)"\s+value="H"\s+type="radio"\s+name="\1"([^>]*class="form-check-input[^"]*"[^>]*)/g;
-  // Also match hidden inputs for locked games: <input name="N" type="hidden" id="N" value="H|A">
-  // Captures the existing pick (H or A) so it can be re-sent in the submission body,
+  // Hidden inputs for locked games: <input name="N" type="hidden" id="N" value="H|A">.
+  // Captures the existing pick so it can be re-sent in the submission body,
   // preventing iTipFooty from clearing the locked-game pick when we resubmit.
   const hiddenGamePattern =
     /input\s+name="(\d+)"\s+type="hidden"\s+id="\1"\s+value="(H|A)"/g;
+  // Disabled radio buttons may also indicate the existing pick via the `checked`
+  // attribute. Match any <input> tag containing name="N", then verify in code
+  // that it's a radio with `checked` set — attribute order varies between
+  // iTipFooty releases, so the regex stays loose and the post-checks are strict.
+  const checkedRadioPattern = /<input\s[^>]*\bname="(\d+)"[^>]*>/g;
 
-  const gameNumbers = new Set<number>();
+  const gameMap = new Map<number, ITipGame>();
 
   let match;
   while ((match = gamePattern.exec(html)) !== null) {
@@ -240,25 +245,32 @@ export async function fetchTippingPage(
     // Check for 'disabled' anywhere in the full matched tag content (handles both
     // disabled-before-class and disabled-after-class attribute orderings).
     const locked = /\bdisabled\b/.test(match[0]);
-    gameNumbers.add(gameNum);
-    games.push({
-      gameNumber: gameNum,
-      homeTeam: '',
-      awayTeam: '',
-      homeTeamId: '',
-      awayTeamId: '',
-      locked,
-    });
+    if (!gameMap.has(gameNum)) {
+      gameMap.set(gameNum, {
+        gameNumber: gameNum,
+        homeTeam: '',
+        awayTeam: '',
+        homeTeamId: '',
+        awayTeamId: '',
+        locked,
+      });
+    }
   }
 
-  // Also find locked (hidden input) games. Store the existing pick value so it can
-  // be preserved in the POST body — without it iTipFooty may clear the pick on resubmit.
+  // Always run the hidden-input pass and merge `existingPick` into whichever game
+  // record exists (or create one if the radio pattern didn't see this game).
+  // Crucially, do NOT skip games that the radio pattern already added — locked
+  // games are typically rendered as BOTH disabled radios AND a hidden input, and
+  // the hidden input is the only place the existing pick value lives.
   while ((match = hiddenGamePattern.exec(html)) !== null) {
     const gameNum = parseInt(match[1], 10);
     const existingPick = match[2] as 'H' | 'A';
-    if (!gameNumbers.has(gameNum)) {
-      gameNumbers.add(gameNum);
-      games.push({
+    const existing = gameMap.get(gameNum);
+    if (existing) {
+      existing.locked = true;
+      existing.existingPick = existingPick;
+    } else {
+      gameMap.set(gameNum, {
         gameNumber: gameNum,
         homeTeam: '',
         awayTeam: '',
@@ -270,6 +282,23 @@ export async function fetchTippingPage(
     }
   }
 
+  // Fallback: if a locked game still has no `existingPick`, scan radio inputs
+  // for one with `checked` and read its value attribute. Skips non-radio tags
+  // (e.g. the hidden inputs already handled above).
+  while ((match = checkedRadioPattern.exec(html)) !== null) {
+    const tag = match[0];
+    if (!/type="radio"/.test(tag)) continue;
+    if (!/\bchecked\b/.test(tag)) continue;
+    const valueMatch = tag.match(/value="(H|A)"/);
+    if (!valueMatch) continue;
+    const gameNum = parseInt(match[1], 10);
+    const existing = gameMap.get(gameNum);
+    if (existing && !existing.existingPick) {
+      existing.existingPick = valueMatch[1] as 'H' | 'A';
+    }
+  }
+
+  games.push(...gameMap.values());
   games.sort((a, b) => a.gameNumber - b.gameNumber);
 
   // Extract team names per game from longteamname spans

@@ -67,6 +67,38 @@ const MOCK_TIPPING_HTML_DISABLED_BEFORE_CLASS = `
   <span id="longteamname"><strong>Panthers</strong></span>
 `;
 
+// Locked game rendered as iTipFooty actually does it: BOTH a disabled radio
+// button AND a sibling hidden input carrying the previously submitted pick.
+// This is the scenario that was wiping locked picks on resubmit — the radio
+// pattern matched first, so the hidden-input pattern was skipped and the
+// existingPick was never captured.
+const MOCK_TIPPING_HTML_LOCKED_RADIO_AND_HIDDEN = `
+  <input name="postmemberid" type="hidden" value="99999">
+  <input name="JOKERCOUNT" type="hidden" value="1">
+  <input name="CURRENTJOKERCOUNT" type="hidden" value="0">
+  <input name="todo" type="hidden" value="add">
+  var marginincluded = "NO"
+  <input id="1" value="H" type="radio" name="1" disabled class="form-check-input">
+  <input id="1" value="A" type="radio" name="1" disabled checked class="form-check-input">
+  <input name="1" type="hidden" id="1" value="A">
+  <span id="longteamname"><strong>Broncos</strong></span>
+  <span id="longteamname"><strong>Roosters</strong></span>
+`;
+
+// Locked game rendered with disabled radios only (no sibling hidden input).
+// existingPick must be inferred from the `checked` attribute on the radio.
+const MOCK_TIPPING_HTML_LOCKED_RADIO_CHECKED_ONLY = `
+  <input name="postmemberid" type="hidden" value="99999">
+  <input name="JOKERCOUNT" type="hidden" value="1">
+  <input name="CURRENTJOKERCOUNT" type="hidden" value="0">
+  <input name="todo" type="hidden" value="add">
+  var marginincluded = "NO"
+  <input id="1" value="H" type="radio" name="1" disabled checked class="form-check-input">
+  <input id="1" value="A" type="radio" name="1" disabled class="form-check-input">
+  <span id="longteamname"><strong>Storm</strong></span>
+  <span id="longteamname"><strong>Panthers</strong></span>
+`;
+
 // ---------------------------------------------------------------------------
 // isConfigured
 // ---------------------------------------------------------------------------
@@ -245,6 +277,35 @@ describe('fetchTippingPage()', () => {
     const result = await fetchTippingPage(MOCK_SESSION, 1);
     expect(result.games).toHaveLength(1);
     expect(result.games[0].locked).toBe(true);
+  });
+
+  it('captures existingPick on locked games rendered as both disabled radio + hidden input', async () => {
+    // Regression test for the bug that was clearing previously submitted picks
+    // on resubmit: the radio-button pattern would match first and the hidden-
+    // input pattern would skip the game, leaving existingPick undefined.
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      text: async () => MOCK_TIPPING_HTML_LOCKED_RADIO_AND_HIDDEN,
+    });
+    const result = await fetchTippingPage(MOCK_SESSION, 1);
+    expect(result.games).toHaveLength(1);
+    const locked = result.games[0];
+    expect(locked.locked).toBe(true);
+    expect(locked.existingPick).toBe('A');
+    expect(locked.homeTeamId).toBe('BRI');
+    expect(locked.awayTeamId).toBe('SYD');
+  });
+
+  it('captures existingPick from `checked` attribute when no hidden input is present', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      text: async () => MOCK_TIPPING_HTML_LOCKED_RADIO_CHECKED_ONLY,
+    });
+    const result = await fetchTippingPage(MOCK_SESSION, 1);
+    expect(result.games).toHaveLength(1);
+    const locked = result.games[0];
+    expect(locked.locked).toBe(true);
+    expect(locked.existingPick).toBe('H');
   });
 
   it('parses mixed round with one locked (hidden) and one unlocked game', async () => {
