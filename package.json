@@ -1,6 +1,6 @@
 {
   "name": "footy-tips-app",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "private": true,
   "description": "NRL tipping competition assistant",
   "scripts": {
