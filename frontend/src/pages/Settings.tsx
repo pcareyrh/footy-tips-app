@@ -338,7 +338,7 @@ export default function Settings() {
               A personal AFL/NRL tipping assistant that helps you track fixtures, make
               data-driven picks, and analyze your tipping performance.
             </p>
-            <p className="mt-2 text-xs text-zinc-500">Version 0.1.0</p>
+            <p className="mt-2 text-xs text-zinc-500">Version {__APP_VERSION__}</p>
           </div>
         </div>
       </Card>
