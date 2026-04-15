@@ -211,7 +211,7 @@ describe('tick()', () => {
     vi.mocked(isConfigured).mockReturnValue(true);
   });
 
-  it('does nothing when no fixtures are in the T-40min window', async () => {
+  it('does nothing when no fixtures are in the T-60min window', async () => {
     const prisma = makeMockPrisma({ fixtures: [] });
 
     await tick(prisma);

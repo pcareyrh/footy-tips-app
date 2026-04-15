@@ -1,7 +1,7 @@
 /**
  * Scheduler — auto-submits iTipFooty tips once per round.
  *
- * A single trigger per round: 40 minutes before the first game kicks off,
+ * A single trigger per round: 1 hour before the first game kicks off,
  * scrape current data and submit all tips. There is no per-game resubmission —
  * resubmits after the first kickoff risk clearing already-locked picks on the
  * iTipFooty side, so we make a single pass and leave the round alone.
@@ -97,10 +97,10 @@ export async function tick(prisma: PrismaClient): Promise<void> {
   if (!isConfigured()) return;
 
   const now = new Date();
-  const windowStart = new Date(now.getTime() + 35 * 60_000); // 35 min from now
-  const windowEnd   = new Date(now.getTime() + 45 * 60_000); // 45 min from now
+  const windowStart = new Date(now.getTime() + 55 * 60_000); // 55 min from now
+  const windowEnd   = new Date(now.getTime() + 65 * 60_000); // 65 min from now
 
-  // Find upcoming fixtures whose kickoff falls inside the ±5-min window around T-40min
+  // Find upcoming fixtures whose kickoff falls inside the ±5-min window around T-60min
   const inWindow = await prisma.fixture.findMany({
     where: {
       kickoff: { gte: windowStart, lte: windowEnd },
@@ -136,7 +136,7 @@ export async function tick(prisma: PrismaClient): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Round-level submit — fires 1h before first game
+// Round-level submit — fires 1 hour before first game
 // ---------------------------------------------------------------------------
 
 // Exported for testing
@@ -160,7 +160,7 @@ export async function handleRoundSubmit(prisma: PrismaClient, roundNum: number):
     return;
   }
 
-  console.log(`[scheduler] Auto-submitting Round ${roundNum} tips (T-40min before first game)…`);
+  console.log(`[scheduler] Auto-submitting Round ${roundNum} tips (T-60min before first game)…`);
 
   try {
     await scrapeCurrentRound(prisma);
