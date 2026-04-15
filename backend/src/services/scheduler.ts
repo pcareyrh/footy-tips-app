@@ -119,11 +119,15 @@ export async function tick(prisma: PrismaClient): Promise<void> {
   for (const fixture of inWindow) {
     if (handledRounds.has(fixture.round.number)) continue;
 
+    // Find the absolute first kickoff in the round — including already-completed
+    // games. Excluding completed games here was the "tips reset after games
+    // completed" bug: once game 1 finished, game 2 became the "first" by the
+    // query, and the scheduler fired a second submission that clobbered the
+    // completed-game picks on iTipFooty.
     const firstInRound = await prisma.fixture.findFirst({
       where: {
         roundId: fixture.roundId,
         kickoff: { not: null },
-        status: { not: 'completed' },
       },
       orderBy: { kickoff: 'asc' },
     });
@@ -141,14 +145,16 @@ export async function tick(prisma: PrismaClient): Promise<void> {
 
 // Exported for testing
 export async function handleRoundSubmit(prisma: PrismaClient, roundNum: number): Promise<void> {
-  // Skip if a successful submission for this round already happened in the last 30 min
-  // (covers both manual UI submissions and previous auto runs)
+  // Skip if any successful submission for this round has already happened in
+  // the last 7 days. Covers manual UI submits as well as prior auto runs, and
+  // guarantees at-most-once firing per round (a week). The 7-day bound scopes
+  // the check to the current season so next year's Round N doesn't match.
   const recent = await prisma.dataSourceLog.findFirst({
     where: {
       source: { in: ['itipfooty', 'itipfooty-auto'] },
       message: { contains: `Round ${roundNum}` },
       status: { in: ['success', 'partial'] },
-      createdAt: { gte: new Date(Date.now() - 30 * 60_000) },
+      createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60_000) },
     },
     orderBy: { createdAt: 'desc' },
   });

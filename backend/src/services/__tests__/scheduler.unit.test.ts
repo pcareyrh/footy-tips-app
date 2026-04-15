@@ -131,12 +131,12 @@ describe('handleRoundSubmit()', () => {
     expect(submitTips).toHaveBeenCalledOnce();
   });
 
-  it('skips submitTips when a successful submission already exists within 30 min', async () => {
+  it('skips submitTips when a successful submission already exists within 7 days', async () => {
     const recentSubmission = {
       source: 'itipfooty-auto',
       status: 'success',
       message: 'Round 6: submitted',
-      createdAt: new Date(Date.now() - 5 * 60_000), // 5 min ago
+      createdAt: new Date(Date.now() - 3 * 24 * 60 * 60_000), // 3 days ago
     };
     const prisma = makeMockPrisma({ recentSubmission });
 
@@ -256,5 +256,25 @@ describe('tick()', () => {
     expect(scrapeCurrentRound).not.toHaveBeenCalled();
     expect(submitTips).not.toHaveBeenCalled();
     expect(prisma.dataSourceLog.create).not.toHaveBeenCalled();
+  });
+
+  it('does not re-submit after the round\'s first game has completed', async () => {
+    // Regression: completed-game picks were getting cleared because the
+    // firstInRound query excluded completed games, letting a later game in the
+    // round masquerade as "first" and trigger a second submission.
+    const game2Kickoff = new Date(Date.now() + 60 * 60_000);
+    const game1Kickoff = new Date(game2Kickoff.getTime() - 2 * 3600_000);
+    const game2 = { id: 'fix-2', roundId: 'r-6', kickoff: game2Kickoff, status: 'upcoming', round: { number: 6 } };
+    const game1Completed = { id: 'fix-1', roundId: 'r-6', kickoff: game1Kickoff, status: 'completed' };
+
+    const prisma = makeMockPrisma({
+      fixtures: [game2],
+      firstInRound: game1Completed, // the completed game IS still the first in round
+    });
+
+    await tick(prisma);
+
+    expect(submitTips).not.toHaveBeenCalled();
+    expect(scrapeCurrentRound).not.toHaveBeenCalled();
   });
 });
