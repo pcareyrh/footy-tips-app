@@ -19,6 +19,92 @@ const confidenceEmoji: Record<string, string> = {
   'LOW': '⚠️',
 };
 
+function formatReturnDate(raw?: string | null): string | null {
+  if (!raw) return null;
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' });
+}
+
+function InjuryRow({ inj }: { inj: any }) {
+  const statusColor =
+    inj.status === 'out' ? 'text-red-400'
+    : inj.status === 'doubtful' ? 'text-amber-400'
+    : 'text-emerald-400';
+  const statusLabel = inj.status === 'probable' ? '✓ returning' : inj.status;
+  const returnFmt = formatReturnDate(inj.returnDate);
+  const meta = [inj.position, inj.injuryType, inj.severity].filter(Boolean).join(' · ');
+
+  return (
+    <div className="flex items-start justify-between gap-2 py-0.5">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-zinc-300">{inj.playerName}</p>
+        {meta && <p className="truncate text-[10px] text-zinc-500">{meta}</p>}
+      </div>
+      <div className="flex shrink-0 flex-col items-end">
+        <span className={cn('text-[10px] font-medium uppercase', statusColor)}>
+          {statusLabel}
+        </span>
+        {returnFmt && (
+          <span className="text-[10px] text-zinc-500">
+            {inj.status === 'probable' ? returnFmt : `back ${returnFmt}`}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function countInjuries(list: any[] = []) {
+  let out = 0, doubtful = 0, returning = 0;
+  for (const inj of list) {
+    if (inj.status === 'out') out++;
+    else if (inj.status === 'doubtful') doubtful++;
+    else if (inj.status === 'probable') returning++;
+  }
+  return { out, doubtful, returning };
+}
+
+function injurySummary(list: any[]): string {
+  const { out, doubtful, returning } = countInjuries(list);
+  const parts: string[] = [];
+  if (out) parts.push(`${out} out`);
+  if (doubtful) parts.push(`${doubtful} doubt`);
+  if (returning) parts.push(`${returning} back`);
+  return parts.length ? parts.join(', ') : '—';
+}
+
+function InjuryGlance({ home, away }: { home: any; away: any }) {
+  const homeList = home.injuries ?? [];
+  const awayList = away.injuries ?? [];
+  if (homeList.length === 0 && awayList.length === 0) return null;
+  return (
+    <div className="px-4 pb-2">
+      <p className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+        <span className="text-zinc-600">⚕</span>
+        <span className="truncate">
+          {home.name}: <span className="text-zinc-400">{injurySummary(homeList)}</span>
+          <span className="mx-2 text-zinc-700">·</span>
+          {away.name}: <span className="text-zinc-400">{injurySummary(awayList)}</span>
+        </span>
+      </p>
+    </div>
+  );
+}
+
+function InjuryPanel({ teamName, injuries }: { teamName: string; injuries: any[] }) {
+  return (
+    <div className="rounded-lg bg-zinc-800 p-2">
+      <p className="mb-1 text-zinc-500">{teamName} Injuries</p>
+      {injuries?.length > 0 ? (
+        injuries.map((inj: any, i: number) => <InjuryRow key={i} inj={inj} />)
+      ) : (
+        <p className="text-zinc-600">No injuries</p>
+      )}
+    </div>
+  );
+}
+
 function FactorBar({ factor }: { factor: any }) {
   const maxWeight = 20;
   const pct = Math.min((factor.weight / maxWeight) * 100, 100);
@@ -128,6 +214,10 @@ function PredictionCard({ prediction }: { prediction: any }) {
         </div>
       </div>
 
+      {/* Injury glance */}
+      <InjuryGlance home={prediction.homeTeam} away={prediction.awayTeam} />
+
+
       {/* Expand/collapse factors */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -202,44 +292,8 @@ function PredictionCard({ prediction }: { prediction: any }) {
           {/* Injury summary */}
           {(prediction.homeTeam.injuries?.length > 0 || prediction.awayTeam.injuries?.length > 0) && (
             <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-lg bg-zinc-800 p-2">
-                <p className="text-zinc-500 mb-1">{prediction.homeTeam.name} Injuries</p>
-                {prediction.homeTeam.injuries?.length > 0 ? (
-                  prediction.homeTeam.injuries.map((inj: any, i: number) => (
-                    <div key={i} className="flex items-center justify-between py-0.5">
-                      <span className="text-zinc-300">{inj.playerName}</span>
-                      <span className={cn(
-                        'text-[10px] uppercase font-medium',
-                        inj.status === 'out' ? 'text-red-400' : inj.status === 'doubtful' ? 'text-amber-400' : 'text-emerald-400'
-                      )}>
-                        {inj.status === 'probable' ? '✓ returning' : inj.status}
-                        {inj.position ? ` · ${inj.position}` : ''}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-zinc-600">No injuries</p>
-                )}
-              </div>
-              <div className="rounded-lg bg-zinc-800 p-2">
-                <p className="text-zinc-500 mb-1">{prediction.awayTeam.name} Injuries</p>
-                {prediction.awayTeam.injuries?.length > 0 ? (
-                  prediction.awayTeam.injuries.map((inj: any, i: number) => (
-                    <div key={i} className="flex items-center justify-between py-0.5">
-                      <span className="text-zinc-300">{inj.playerName}</span>
-                      <span className={cn(
-                        'text-[10px] uppercase font-medium',
-                        inj.status === 'out' ? 'text-red-400' : inj.status === 'doubtful' ? 'text-amber-400' : 'text-emerald-400'
-                      )}>
-                        {inj.status === 'probable' ? '✓ returning' : inj.status}
-                        {inj.position ? ` · ${inj.position}` : ''}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-zinc-600">No injuries</p>
-                )}
-              </div>
+              <InjuryPanel teamName={prediction.homeTeam.name} injuries={prediction.homeTeam.injuries ?? []} />
+              <InjuryPanel teamName={prediction.awayTeam.name} injuries={prediction.awayTeam.injuries ?? []} />
             </div>
           )}
 
