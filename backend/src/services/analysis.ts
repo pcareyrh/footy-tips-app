@@ -339,7 +339,7 @@ export async function predictMatch(
     const awayProb = 1 / matchOdds.awayOdds;
     const totalProb = homeProb + awayProb;
     const homeNorm = homeProb / totalProb;
-    const oddsAdv = (homeNorm - 0.5) * 50; // -25 to +25
+    const oddsAdv = (homeNorm - 0.5) * 30; // -15 to +15
     const oddsWeight = Math.abs(oddsAdv);
     if (oddsAdv > 0) homeScore += oddsWeight; else awayScore += oddsWeight;
     factors.push({
