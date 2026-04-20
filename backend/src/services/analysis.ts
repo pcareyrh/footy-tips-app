@@ -150,14 +150,23 @@ export function filterActiveInjuries(
   fixtureKickoff: Date | null
 ): InjuryInfo[] {
   if (!fixtureKickoff) return injuries;
-  const kickoffMs = fixtureKickoff.getTime();
-  const windowEndMs = kickoffMs + RETURNING_WINDOW_MS;
+
+  // Strip time — compare calendar dates only so a returnDate of "2026-04-20"
+  // isn't accidentally dropped for a fixture kicking off later that same day.
+  const kickoffDayMs = Date.UTC(
+    fixtureKickoff.getUTCFullYear(),
+    fixtureKickoff.getUTCMonth(),
+    fixtureKickoff.getUTCDate()
+  );
+  const windowEndMs = kickoffDayMs + RETURNING_WINDOW_MS;
 
   return injuries.flatMap(inj => {
     if (!inj.returnDate) return [inj];
     const returnMs = Date.parse(inj.returnDate);
     if (isNaN(returnMs)) return [inj];
-    if (returnMs <= kickoffMs) return [];
+    // Strictly before the fixture day → player has recovered
+    if (returnMs < kickoffDayMs) return [];
+    // Within 7 days of the fixture day → upgrade out/doubtful to probable (returning)
     if (returnMs <= windowEndMs && (inj.status === 'out' || inj.status === 'doubtful')) {
       return [{ ...inj, status: 'probable' }];
     }

@@ -235,11 +235,15 @@ describe('filterActiveInjuries', () => {
     expect(filterActiveInjuries(injuries, kickoff)).toHaveLength(0);
   });
 
-  it('drops injuries whose returnDate equals kickoff', () => {
+  it('keeps injuries whose returnDate is the same calendar day as kickoff', () => {
+    // returnDate "2026-05-10" should NOT be dropped for a kickoff on 2026-05-10T19:30Z
     const injuries: InjuryInfo[] = [
-      { playerName: 'A', position: 'halfback', severity: 'major', status: 'out', injuryType: null, returnDate: kickoff.toISOString() },
+      { playerName: 'A', position: 'halfback', severity: 'major', status: 'out', injuryType: null, returnDate: '2026-05-10' },
     ];
-    expect(filterActiveInjuries(injuries, kickoff)).toHaveLength(0);
+    const result = filterActiveInjuries(injuries, kickoff);
+    expect(result).toHaveLength(1);
+    // Same-day return within the 7-day window → upgraded to probable
+    expect(result[0].status).toBe('probable');
   });
 
   it('upgrades out → probable when returnDate is within 7 days after kickoff', () => {
