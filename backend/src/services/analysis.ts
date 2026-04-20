@@ -6,6 +6,7 @@ export interface InjuryInfo {
   severity: string | null;
   status: string;
   injuryType: string | null;
+  returnDate?: string | null;
 }
 
 export interface TeamProfile {
@@ -134,6 +135,35 @@ function getStatusModifier(status: string): number {
   return STATUS_MODIFIER[status.toLowerCase().trim()] ?? 1.0;
 }
 
+const RETURNING_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Filter a team's injuries to those still relevant for a fixture given its kickoff.
+ * - `returnDate` on/before kickoff: player has recovered, drop them.
+ * - `returnDate` within ~7 days after kickoff with status out/doubtful: auto-upgrade
+ *   to `probable` so they contribute a return-boost rather than a burden.
+ * - No `returnDate`, unparseable date, or no kickoff: leave the injury untouched.
+ */
+export function filterActiveInjuries(
+  injuries: InjuryInfo[],
+  fixtureKickoff: Date | null
+): InjuryInfo[] {
+  if (!fixtureKickoff) return injuries;
+  const kickoffMs = fixtureKickoff.getTime();
+  const windowEndMs = kickoffMs + RETURNING_WINDOW_MS;
+
+  return injuries.flatMap(inj => {
+    if (!inj.returnDate) return [inj];
+    const returnMs = Date.parse(inj.returnDate);
+    if (isNaN(returnMs)) return [inj];
+    if (returnMs <= kickoffMs) return [];
+    if (returnMs <= windowEndMs && (inj.status === 'out' || inj.status === 'doubtful')) {
+      return [{ ...inj, status: 'probable' }];
+    }
+    return [inj];
+  });
+}
+
 /**
  * Calculate the total injury burden for a team.
  * Higher score = more impacted by injuries (worse off).
@@ -164,7 +194,11 @@ export function calculateReturnBoost(injuries: InjuryInfo[]): number {
   return boost;
 }
 
-async function buildTeamProfile(prisma: PrismaClient, teamId: string): Promise<TeamProfile> {
+async function buildTeamProfile(
+  prisma: PrismaClient,
+  teamId: string,
+  fixtureKickoff: Date | null = null
+): Promise<TeamProfile> {
   const team = await prisma.team.findUniqueOrThrow({ where: { id: teamId } });
 
   const ladder2025 = await prisma.ladderEntry.findFirst({
@@ -218,13 +252,16 @@ async function buildTeamProfile(prisma: PrismaClient, teamId: string): Promise<T
     },
   });
 
-  const injuries: InjuryInfo[] = activeInjuries.map((inj: { playerName: string; position: string | null; severity: string | null; status: string; injuryType: string | null }) => ({
+  const rawInjuries: InjuryInfo[] = activeInjuries.map((inj: { playerName: string; position: string | null; severity: string | null; status: string; injuryType: string | null; returnDate: string | null }) => ({
     playerName: inj.playerName,
     position: inj.position,
     severity: inj.severity,
     status: inj.status,
     injuryType: inj.injuryType,
+    returnDate: inj.returnDate,
   }));
+
+  const injuries = filterActiveInjuries(rawInjuries, fixtureKickoff);
 
   // Latest team stats (try 2025 first, then any season)
   const teamStat = await prisma.teamStat.findFirst({
@@ -285,10 +322,11 @@ export async function predictMatch(
   homeTeamId: string,
   awayTeamId: string,
   venue: string,
-  matchOdds?: { homeOdds: number | null; awayOdds: number | null }
+  matchOdds?: { homeOdds: number | null; awayOdds: number | null },
+  fixtureKickoff: Date | null = null
 ): Promise<MatchPrediction> {
-  const home = await buildTeamProfile(prisma, homeTeamId);
-  const away = await buildTeamProfile(prisma, awayTeamId);
+  const home = await buildTeamProfile(prisma, homeTeamId, fixtureKickoff);
+  const away = await buildTeamProfile(prisma, awayTeamId, fixtureKickoff);
   const h2h = await getH2H(prisma, homeTeamId, awayTeamId);
 
   const factors: PredictionFactor[] = [];
@@ -588,7 +626,8 @@ export async function predictRound(
   for (const f of fixtures) {
     const prediction = await predictMatch(
       prisma, f.id, f.homeTeamId, f.awayTeamId, f.venue ?? 'TBA',
-      { homeOdds: f.homeOdds, awayOdds: f.awayOdds }
+      { homeOdds: f.homeOdds, awayOdds: f.awayOdds },
+      f.kickoff ?? null
     );
 
     // For completed fixtures, attach the actual result and whether the prediction was correct

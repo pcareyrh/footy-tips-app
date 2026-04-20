@@ -7,6 +7,7 @@ import {
   confidenceLabel,
   calculateInjuryBurden,
   calculateReturnBoost,
+  filterActiveInjuries,
   predictMatch,
 } from '../analysis.js';
 import type { InjuryInfo } from '../analysis.js';
@@ -197,6 +198,96 @@ describe('calculateReturnBoost', () => {
       { playerName: 'C', position: 'halfback', severity: 'minor', status: 'probable', injuryType: null },
     ];
     expect(calculateReturnBoost(injuries)).toBeCloseTo(0.5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// filterActiveInjuries
+// ---------------------------------------------------------------------------
+describe('filterActiveInjuries', () => {
+  const kickoff = new Date('2026-05-10T19:30:00Z');
+
+  it('returns input unchanged when kickoff is null', () => {
+    const injuries: InjuryInfo[] = [
+      { playerName: 'A', position: 'halfback', severity: 'major', status: 'out', injuryType: null, returnDate: '2026-01-01' },
+    ];
+    expect(filterActiveInjuries(injuries, null)).toEqual(injuries);
+  });
+
+  it('keeps injuries that have no returnDate', () => {
+    const injuries: InjuryInfo[] = [
+      { playerName: 'A', position: 'halfback', severity: 'major', status: 'out', injuryType: null, returnDate: null },
+    ];
+    expect(filterActiveInjuries(injuries, kickoff)).toHaveLength(1);
+  });
+
+  it('keeps injuries with unparseable returnDate', () => {
+    const injuries: InjuryInfo[] = [
+      { playerName: 'A', position: 'halfback', severity: 'major', status: 'out', injuryType: null, returnDate: 'not a date' },
+    ];
+    expect(filterActiveInjuries(injuries, kickoff)).toHaveLength(1);
+  });
+
+  it('drops injuries whose returnDate is before kickoff (player recovered)', () => {
+    const injuries: InjuryInfo[] = [
+      { playerName: 'A', position: 'halfback', severity: 'major', status: 'out', injuryType: null, returnDate: '2026-05-01' },
+    ];
+    expect(filterActiveInjuries(injuries, kickoff)).toHaveLength(0);
+  });
+
+  it('drops injuries whose returnDate equals kickoff', () => {
+    const injuries: InjuryInfo[] = [
+      { playerName: 'A', position: 'halfback', severity: 'major', status: 'out', injuryType: null, returnDate: kickoff.toISOString() },
+    ];
+    expect(filterActiveInjuries(injuries, kickoff)).toHaveLength(0);
+  });
+
+  it('upgrades out → probable when returnDate is within 7 days after kickoff', () => {
+    const injuries: InjuryInfo[] = [
+      { playerName: 'A', position: 'halfback', severity: 'major', status: 'out', injuryType: null, returnDate: '2026-05-14' },
+    ];
+    const result = filterActiveInjuries(injuries, kickoff);
+    expect(result).toHaveLength(1);
+    expect(result[0].status).toBe('probable');
+  });
+
+  it('upgrades doubtful → probable when returnDate is within 7 days after kickoff', () => {
+    const injuries: InjuryInfo[] = [
+      { playerName: 'A', position: 'fullback', severity: 'minor', status: 'doubtful', injuryType: null, returnDate: '2026-05-13' },
+    ];
+    const result = filterActiveInjuries(injuries, kickoff);
+    expect(result[0].status).toBe('probable');
+  });
+
+  it('keeps status unchanged when returnDate is more than 7 days after kickoff', () => {
+    const injuries: InjuryInfo[] = [
+      { playerName: 'A', position: 'halfback', severity: 'major', status: 'out', injuryType: null, returnDate: '2026-06-15' },
+    ];
+    const result = filterActiveInjuries(injuries, kickoff);
+    expect(result[0].status).toBe('out');
+  });
+
+  it('leaves already-probable players untouched even within the window', () => {
+    const injuries: InjuryInfo[] = [
+      { playerName: 'A', position: 'halfback', severity: 'minor', status: 'probable', injuryType: null, returnDate: '2026-05-12' },
+    ];
+    const result = filterActiveInjuries(injuries, kickoff);
+    expect(result).toHaveLength(1);
+    expect(result[0].status).toBe('probable');
+  });
+
+  it('handles mixed injury list correctly', () => {
+    const injuries: InjuryInfo[] = [
+      { playerName: 'Recovered', position: 'halfback', severity: 'major', status: 'out', injuryType: null, returnDate: '2026-04-01' },
+      { playerName: 'Returning', position: 'fullback', severity: 'minor', status: 'out', injuryType: null, returnDate: '2026-05-12' },
+      { playerName: 'Still out', position: 'prop', severity: 'major', status: 'out', injuryType: null, returnDate: '2026-07-01' },
+      { playerName: 'Unknown', position: 'centre', severity: 'moderate', status: 'out', injuryType: null, returnDate: null },
+    ];
+    const result = filterActiveInjuries(injuries, kickoff);
+    const names = result.map(i => i.playerName).sort();
+    expect(names).toEqual(['Returning', 'Still out', 'Unknown']);
+    expect(result.find(i => i.playerName === 'Returning')?.status).toBe('probable');
+    expect(result.find(i => i.playerName === 'Still out')?.status).toBe('out');
   });
 });
 
