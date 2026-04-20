@@ -29,9 +29,13 @@ function formatReturnDate(raw?: string | null): string | null {
 function InjuryRow({ inj }: { inj: any }) {
   const statusColor =
     inj.status === 'out' ? 'text-red-400'
+    : inj.status === 'suspended' ? 'text-orange-400'
     : inj.status === 'doubtful' ? 'text-amber-400'
     : 'text-emerald-400';
-  const statusLabel = inj.status === 'probable' ? '✓ returning' : inj.status;
+  const statusLabel =
+    inj.status === 'probable' ? '✓ returning'
+    : inj.status === 'suspended' ? '⚑ suspended'
+    : inj.status;
   const returnFmt = formatReturnDate(inj.returnDate);
   const meta = [inj.position, inj.injuryType, inj.severity].filter(Boolean).join(' · ');
 
@@ -56,19 +60,21 @@ function InjuryRow({ inj }: { inj: any }) {
 }
 
 function countInjuries(list: any[] = []) {
-  let out = 0, doubtful = 0, returning = 0;
+  let out = 0, suspended = 0, doubtful = 0, returning = 0;
   for (const inj of list) {
     if (inj.status === 'out') out++;
+    else if (inj.status === 'suspended') suspended++;
     else if (inj.status === 'doubtful') doubtful++;
     else if (inj.status === 'probable') returning++;
   }
-  return { out, doubtful, returning };
+  return { out, suspended, doubtful, returning };
 }
 
 function injurySummary(list: any[]): string {
-  const { out, doubtful, returning } = countInjuries(list);
+  const { out, suspended, doubtful, returning } = countInjuries(list);
   const parts: string[] = [];
   if (out) parts.push(`${out} out`);
+  if (suspended) parts.push(`${suspended} susp`);
   if (doubtful) parts.push(`${doubtful} doubt`);
   if (returning) parts.push(`${returning} back`);
   return parts.length ? parts.join(', ') : '—';
@@ -95,11 +101,11 @@ function InjuryGlance({ home, away }: { home: any; away: any }) {
 function InjuryPanel({ teamName, injuries }: { teamName: string; injuries: any[] }) {
   return (
     <div className="rounded-lg bg-zinc-800 p-2">
-      <p className="mb-1 text-zinc-500">{teamName} Injuries</p>
+      <p className="mb-1 text-zinc-500">{teamName}</p>
       {injuries?.length > 0 ? (
         injuries.map((inj: any, i: number) => <InjuryRow key={i} inj={inj} />)
       ) : (
-        <p className="text-zinc-600">No injuries</p>
+        <p className="text-zinc-600">No injuries / suspensions</p>
       )}
     </div>
   );
@@ -289,13 +295,11 @@ function PredictionCard({ prediction }: { prediction: any }) {
             </div>
           )}
 
-          {/* Injury summary */}
-          {(prediction.homeTeam.injuries?.length > 0 || prediction.awayTeam.injuries?.length > 0) && (
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <InjuryPanel teamName={prediction.homeTeam.name} injuries={prediction.homeTeam.injuries ?? []} />
-              <InjuryPanel teamName={prediction.awayTeam.name} injuries={prediction.awayTeam.injuries ?? []} />
-            </div>
-          )}
+          {/* Injury / suspension summary — always shown */}
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <InjuryPanel teamName={prediction.homeTeam.name} injuries={prediction.homeTeam.injuries ?? []} />
+            <InjuryPanel teamName={prediction.awayTeam.name} injuries={prediction.awayTeam.injuries ?? []} />
+          </div>
 
           {/* Factors */}
           <div className="space-y-3">

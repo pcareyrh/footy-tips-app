@@ -36,8 +36,8 @@ injuryRoutes.post('/', async (req, res) => {
       return res.status(400).json({ error: 'severity must be minor, moderate, major, or season-ending' });
     }
 
-    if (status && !['out', 'doubtful', 'probable'].includes(status)) {
-      return res.status(400).json({ error: 'status must be out, doubtful, or probable' });
+    if (status && !['out', 'suspended', 'doubtful', 'probable'].includes(status)) {
+      return res.status(400).json({ error: 'status must be out, suspended, doubtful, or probable' });
     }
 
     const injury = await prisma.injury.create({
@@ -66,8 +66,8 @@ injuryRoutes.put('/:id', async (req, res) => {
       return res.status(400).json({ error: 'severity must be minor, moderate, major, or season-ending' });
     }
 
-    if (status && !['out', 'doubtful', 'probable'].includes(status)) {
-      return res.status(400).json({ error: 'status must be out, doubtful, or probable' });
+    if (status && !['out', 'suspended', 'doubtful', 'probable'].includes(status)) {
+      return res.status(400).json({ error: 'status must be out, suspended, doubtful, or probable' });
     }
 
     const injury = await prisma.injury.update({

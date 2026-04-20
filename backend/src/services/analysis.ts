@@ -59,6 +59,7 @@ const SEVERITY_WEIGHT: Record<string, number> = {
 
 const STATUS_MODIFIER: Record<string, number> = {
   'out': 1.0,
+  'suspended': 1.0,
   'doubtful': 0.5,
   'probable': 0.0, // probable players are returning — handled separately as a boost
 };
@@ -248,7 +249,7 @@ async function buildTeamProfile(
   const activeInjuries = await prisma.injury.findMany({
     where: {
       teamId,
-      status: { in: ['out', 'doubtful', 'probable'] },
+      status: { in: ['out', 'suspended', 'doubtful', 'probable'] },
     },
   });
 
@@ -454,16 +455,26 @@ export async function predictMatch(
   if (injuryWeight > 0.1) {
     if (homeInjuryNet > 0) homeScore += injuryWeight; else awayScore += injuryWeight;
 
-    const homeOut = home.injuries.filter(i => i.status === 'out');
-    const awayOut = away.injuries.filter(i => i.status === 'out');
+    const homeOut = home.injuries.filter(i => i.status === 'out' || i.status === 'suspended');
+    const awayOut = away.injuries.filter(i => i.status === 'out' || i.status === 'suspended');
     const homeDoubtful = home.injuries.filter(i => i.status === 'doubtful');
     const awayDoubtful = away.injuries.filter(i => i.status === 'doubtful');
     const homeReturning = home.injuries.filter(i => i.status === 'probable');
     const awayReturning = away.injuries.filter(i => i.status === 'probable');
+    const homeSuspended = home.injuries.filter(i => i.status === 'suspended');
+    const awaySuspended = away.injuries.filter(i => i.status === 'suspended');
 
     const detailParts: string[] = [];
-    detailParts.push(`${home.name}: ${homeOut.length} out, ${homeDoubtful.length} doubtful, ${homeReturning.length} returning`);
-    detailParts.push(`${away.name}: ${awayOut.length} out, ${awayDoubtful.length} doubtful, ${awayReturning.length} returning`);
+    const fmtTeam = (name: string, out: typeof homeOut, doubtful: typeof homeDoubtful, suspended: typeof homeSuspended, returning: typeof homeReturning) => {
+      const parts = [];
+      if (out.length - suspended.length > 0) parts.push(`${out.length - suspended.length} out`);
+      if (suspended.length > 0) parts.push(`${suspended.length} suspended`);
+      if (doubtful.length > 0) parts.push(`${doubtful.length} doubtful`);
+      if (returning.length > 0) parts.push(`${returning.length} returning`);
+      return `${name}: ${parts.join(', ') || 'clear'}`;
+    };
+    detailParts.push(fmtTeam(home.name, homeOut, homeDoubtful, homeSuspended, homeReturning));
+    detailParts.push(fmtTeam(away.name, awayOut, awayDoubtful, awaySuspended, awayReturning));
 
     // List key absences (critical positions)
     const keyAbsences = [...home.injuries, ...away.injuries]
