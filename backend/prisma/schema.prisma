@@ -153,8 +153,9 @@ model Injury {
   injuryType  String?
   severity    String?  // minor, moderate, major, season-ending
   returnDate  String?
-  status      String   @default("out") // out, doubtful, probable
+  status      String   @default("out") // out, doubtful, probable, suspended
   notes       String?
+  source      String   @default("manual") // manual, casualty-ward
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

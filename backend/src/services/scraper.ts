@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { fetchDraw, fetchLadder, fetchSeasonDraw, fetchTeamStats, computeTeamStats, ScrapeResult } from './nrl-api.js';
 import { fetchRoundDetails, fetchSeasonRoundDetails } from './rlp-scraper.js';
 import { scrapeITipMatchStats, isConfigured as itipConfigured } from './itipfooty.js';
+import { scrapeCasualtyWard } from './casualty-ward.js';
 
 /**
  * Sync pick results from completed fixtures.
@@ -127,6 +128,13 @@ export async function scrapeAll(prisma: PrismaClient, season: string = '2026'): 
   const results = await scrapeCurrentRound(prisma, parseInt(season));
   results.push(await scrapeTeamStats(prisma, season));
 
+  // Scrape NRL casualty ward — populates Injury table for prediction engine
+  try {
+    results.push(await scrapeCasualtyWard(prisma, season));
+  } catch (err) {
+    console.error('[scrapeAll] Casualty ward scrape failed:', err instanceof Error ? err.message : err);
+  }
+
   // Scrape iTipFooty crowd tipping ratios (only if credentials are configured)
   if (itipConfigured()) {
     try {
@@ -179,6 +187,13 @@ export async function scrapeAll(prisma: PrismaClient, season: string = '2026'): 
  */
 export async function scrapeTeamStats(prisma: PrismaClient, season: string = '2026'): Promise<ScrapeResult> {
   return fetchTeamStats(prisma, parseInt(season));
+}
+
+/**
+ * Scrape NRL casualty ward for the current season.
+ */
+export async function scrapeInjuries(prisma: PrismaClient, season: string = '2026'): Promise<ScrapeResult> {
+  return scrapeCasualtyWard(prisma, season);
 }
 
 /**
