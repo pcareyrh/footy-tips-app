@@ -111,23 +111,37 @@ function InjuryPanel({ teamName, injuries }: { teamName: string; injuries: any[]
   );
 }
 
-function FactorBar({ factor }: { factor: any }) {
-  const maxWeight = 20;
-  const pct = Math.min((factor.weight / maxWeight) * 100, 100);
+function FactorBar({
+  factor,
+  homeTeam,
+  maxWeight,
+}: {
+  factor: any;
+  homeTeam: string;
+  maxWeight: number;
+}) {
+  const isHome = factor.favouring === homeTeam;
+  const pct = maxWeight > 0 ? Math.min((factor.weight / maxWeight) * 50, 50) : 0;
 
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs">
         <span className="text-zinc-300">{factor.name}</span>
-        <span className="text-zinc-500">{factor.weight.toFixed(1)}pts → {factor.favouring}</span>
+        <span className={cn('font-mono', isHome ? 'text-emerald-400' : 'text-sky-400')}>
+          {factor.weight.toFixed(1)}pts → {factor.favouring}
+        </span>
       </div>
-      <div className="h-1.5 rounded-full bg-zinc-800">
+      <div className="relative h-2 rounded-sm bg-zinc-800">
+        <div className="absolute inset-y-0 left-1/2 w-px bg-zinc-600" />
         <div
-          className="h-full rounded-full bg-emerald-500/60"
+          className={cn(
+            'absolute inset-y-0 rounded-sm transition-all',
+            isHome ? 'left-1/2 bg-emerald-500/70' : 'right-1/2 bg-sky-500/70'
+          )}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <p className="text-xs text-zinc-500">{factor.detail}</p>
+      {factor.detail && <p className="text-xs text-zinc-500">{factor.detail}</p>}
     </div>
   );
 }
@@ -301,12 +315,30 @@ function PredictionCard({ prediction }: { prediction: any }) {
             <InjuryPanel teamName={prediction.awayTeam.name} injuries={prediction.awayTeam.injuries ?? []} />
           </div>
 
-          {/* Factors */}
+          {/* Factors — diverging horizontal bar plot */}
           <div className="space-y-3">
-            <p className="text-xs font-medium text-zinc-400">Contributing Factors</p>
-            {prediction.factors.map((factor: any, i: number) => (
-              <FactorBar key={i} factor={factor} />
-            ))}
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-zinc-400">Contributing Factors</p>
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide">
+                <span className="text-sky-400">◀ {prediction.awayTeam.name}</span>
+                <span className="text-zinc-600">·</span>
+                <span className="text-emerald-400">{prediction.homeTeam.name} ▶</span>
+              </div>
+            </div>
+            {(() => {
+              const maxWeight = Math.max(
+                ...prediction.factors.map((f: any) => f.weight),
+                0.1,
+              );
+              return prediction.factors.map((factor: any, i: number) => (
+                <FactorBar
+                  key={i}
+                  factor={factor}
+                  homeTeam={prediction.homeTeam.name}
+                  maxWeight={maxWeight}
+                />
+              ));
+            })()}
           </div>
         </div>
       )}
