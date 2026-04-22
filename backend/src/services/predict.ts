@@ -162,9 +162,9 @@ async function predictMatch(
   let homeScore = 0;
   let awayScore = 0;
 
-  // === FACTOR 1: 2025 Ladder Position (weight: 20) ===
+  // === FACTOR 1: 2025 Ladder Position (weight: 15) ===
   const ladderDiff = away.ladderPos2025 - home.ladderPos2025; // positive = home higher
-  const ladderScore = Math.min(Math.abs(ladderDiff) * 1.5, 20);
+  const ladderScore = Math.min(Math.abs(ladderDiff) * 1.5, 15);
   const ladderFavour = ladderDiff > 0 ? home.name : ladderDiff < 0 ? away.name : 'Even';
   if (ladderDiff > 0) homeScore += ladderScore; else awayScore += ladderScore;
   factors.push({
